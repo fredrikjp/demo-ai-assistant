@@ -21,9 +21,12 @@ import textwrap
 import time
 
 import streamlit as st
-from snowflake.core import Root
-from snowflake.cortex import complete
+from openai import OpenAI
+import os
 
+
+
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.set_page_config(page_title="Streamlit AI assistant", page_icon="✨")
 
@@ -31,15 +34,10 @@ st.set_page_config(page_title="Streamlit AI assistant", page_icon="✨")
 # Set things up.
 
 
-@st.cache_resource(ttl="5m")
-def get_session():
-    return st.connection("snowflake").session()
 
-
-root = Root(get_session())
 executor = ThreadPoolExecutor(max_workers=5)
 
-MODEL = "claude-3-5-sonnet"
+MODEL = "gpt-4o-mini"
 
 DB = "ST_ASSISTANT"
 SCHEMA = "PUBLIC"
@@ -86,23 +84,23 @@ INSTRUCTIONS = textwrap.dedent("""
 """)
 
 SUGGESTIONS = {
-    ":blue[:material/local_library:] What is Streamlit?": (
+    ":blue[:material/local_library:] Hjelp til å generere en proffesjonell clean CV": (
         "What is Streamlit, what is it great at, and what can I do with it?"
     ),
-    ":green[:material/database:] Help me understand session state": (
-        "Help me understand session state. What is it for? "
-        "What are gotchas? What are alternatives?"
-    ),
-    ":orange[:material/multiline_chart:] How do I make an interactive chart?": (
+    ":orange[:material/call:] AI assistert jobb intervju": (
         "How do I make a chart where, when I click, another chart updates? "
         "Show me examples with Altair or Plotly."
     ),
-    ":violet[:material/apparel:] How do I customize my app?": (
-        "How do I customize my app? What does Streamlit offer? No hacks please."
+    ":green[:material/database:] Lag et skreddersydd søknadsbrev": (
+        "Help me understand session state. What is it for? "
+        "What are gotchas? What are alternatives?"
     ),
-    ":red[:material/deployed_code:] Deploying an app at work": (
-        "How do I deploy an app at work? Give me easy and performant options."
+    ":red[:material/multiline_chart:] Foreslå jobbalternativer": (
+        "How do I make a chart where, when I click, another chart updates? "
+        "Show me examples with Altair or Plotly."
     ),
+    
+
 }
 
 
@@ -166,24 +164,6 @@ def build_question_prompt(question):
             )
         )
 
-    if PAGES_CONTEXT_LEN:
-        task_infos.append(
-            TaskInfo(
-                name="documentation_pages",
-                function=search_relevant_pages,
-                args=(question,),
-            )
-        )
-
-    if DOCSTRINGS_CONTEXT_LEN:
-        task_infos.append(
-            TaskInfo(
-                name="command_docstrings",
-                function=search_relevant_docstrings,
-                args=(question,),
-            )
-        )
-
     results = executor.map(
         lambda task_info: TaskResult(
             name=task_info.name,
@@ -203,73 +183,65 @@ def build_question_prompt(question):
 
 
 def generate_chat_summary(messages):
-    """Summarizes the chat history in `messages`."""
+    """
+    Summarize a conversation history using the OpenAI API.
+
+    Args:
+        messages (list[dict]): Chat history, where each entry has
+            {"role": "user"|"Assistant", "content": str}.
+
+    Returns:
+        str: A concise summary of the conversation.
+    """
     prompt = build_prompt(
         instructions="Summarize this conversation as concisely as possible.",
         conversation=history_to_text(messages),
     )
 
-    return complete(MODEL, prompt, session=get_session())
-
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "You are a summarizer."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
 
 def history_to_text(chat_history):
     """Converts chat history into a string."""
     return "\n".join(f"[{h['role']}]: {h['content']}" for h in chat_history)
 
 
-def search_relevant_pages(query):
-    """Searches the markdown contents of Streamlit's documentation."""
-    cortex_search_service = (
-        root.databases[DB].schemas[SCHEMA].cortex_search_services[PAGES_SEARCH_SERVICE]
-    )
-
-    context_documents = cortex_search_service.search(
-        query,
-        columns=["PAGE_URL", "PAGE_CHUNK"],
-        filter={},
-        limit=PAGES_CONTEXT_LEN,
-    )
-
-    results = context_documents.results
-
-    context = [f"[{row['PAGE_URL']}]: {row['PAGE_CHUNK']}" for row in results]
-    context_str = "\n".join(context)
-
-    return context_str
-
-
-def search_relevant_docstrings(query):
-    """Searches the docstrings of Streamlit's commands."""
-    cortex_search_service = (
-        root.databases[DB]
-        .schemas[SCHEMA]
-        .cortex_search_services[DOCSTRINGS_SEARCH_SERVICE]
-    )
-
-    context_documents = cortex_search_service.search(
-        query,
-        columns=["STREAMLIT_VERSION", "COMMAND_NAME", "DOCSTRING_CHUNK"],
-        filter={"@eq": {"STREAMLIT_VERSION": "latest"}},
-        limit=DOCSTRINGS_CONTEXT_LEN,
-    )
-
-    results = context_documents.results
-
-    context = [
-        f"[Document {i}]: {row['DOCSTRING_CHUNK']}" for i, row in enumerate(results)
-    ]
-    context_str = "\n".join(context)
-
-    return context_str
-
-
 def get_response(prompt):
+    """
+    Stream a response from the OpenAI API for a given prompt.
+
+    Args:
+        prompt (str): The user prompt or full conversation context.
+
+    Yields:
+        str: Chunks of the model’s generated text streamed as they arrive.
+    """
+    stream = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+            ],
+        stream=True,
+    )
+    for chunk in stream:
+        content = getattr(chunk.choices[0].delta, "content", None)
+        if content:
+            yield content
+    """
     return complete(
         MODEL,
         prompt,
         stream=True,
         session=get_session(),
     )
+"""
 
 
 def send_telemetry(**kwargs):
@@ -335,7 +307,7 @@ title_row = st.container(
 with title_row:
     st.title(
         # ":material/cognition_2: Streamlit AI assistant", anchor=False, width="stretch"
-        "Streamlit AI assistant",
+        "Ungt Steg AI assistent",
         anchor=False,
         width="stretch",
     )
@@ -386,6 +358,7 @@ if not user_message:
         user_message = st.session_state.initial_question
     if user_just_clicked_suggestion:
         user_message = SUGGESTIONS[st.session_state.selected_suggestion]
+        #TODO: A suggestion should be a mode where the assistant asks a set of questions getting information from the user to train or build documents for the user.
 
 with title_row:
 

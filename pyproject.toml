@@ -10,4 +10,5 @@ dependencies = [
     "snowflake-ml-python==1.9",
     "snowflake-snowpark-python>=1.37.0",
     "streamlit>=1.49.0",
+    "openai>=0.27.0",
 ]

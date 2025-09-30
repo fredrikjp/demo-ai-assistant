@@ -643,7 +643,6 @@ def extract_personalia_from_json(json_str):
     personalia_dict = json.loads(json_str)
     st.session_state.personalia_name = personalia_dict["Personalia"]["Navn"]
     st.session_state.personalia_dob = personalia_dict["Personalia"]["Fødselsdato"]
-    st.write(f"\n{st.session_state.personalia_name}, {st.session_state.personalia_dob}")
     # If name and dob not given, or empty, ask again.
     if st.session_state.personalia_name == "" or st.session_state.personalia_dob == "":
         raise ValueError("Name or date of birth is empty.")

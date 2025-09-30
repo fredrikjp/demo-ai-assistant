@@ -681,8 +681,7 @@ def show_feedback_controls(message_index):
 @st.dialog("Legal disclaimer")
 def show_disclaimer_dialog():
     st.caption("""
-            This AI chatbot is powered by Snowflake and public Streamlit
-            information. Answers may be inaccurate, inefficient, or biased.
+            This AI chatbot is powered by OpenAI. Answers may be inaccurate, inefficient, or biased.
             Any use or decisions based on such answers should include reasonable
             practices including human oversight to ensure they are safe,
             accurate, and suitable for your intended purpose. Streamlit is not

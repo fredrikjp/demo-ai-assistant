@@ -617,20 +617,20 @@ def json_to_CVpdf():
         latex_CVcode = latex_response_gen.choices[0].message.content
 
         # Save to file named with user's name and day of birth
-        try:
-            #extract_personalia_from_json(json.dumps(st.session_state.CV_dict))
-            #filename = base64.urlsafe_b64encode(f"{st.session_state.personalia_name}_{st.session_state.personalia_dob}".encode()).decode() + ".tex"
-            #st.write(filename)
-            #print(filename)
-            filename = "CV.tex"
-            with open(filename, mode="w", encoding="utf-8") as f:
-                f.write(latex_CVcode)
-            # Compile to PDF using pdflatex
-            subprocess.run(["pdflatex", "-interaction=nonstopmode", filename])
-            st.session_state.is_pdf_ready = True
-        except:
-            st.write("Kunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
-            return
+        #try:
+        #extract_personalia_from_json(json.dumps(st.session_state.CV_dict))
+        #filename = base64.urlsafe_b64encode(f"{st.session_state.personalia_name}_{st.session_state.personalia_dob}".encode()).decode() + ".tex"
+        #st.write(filename)
+        #print(filename)
+        filename = "CV.tex"
+        with open(filename, mode="w", encoding="utf-8") as f:
+            f.write(latex_CVcode)
+        # Compile to PDF using pdflatex
+        subprocess.run(["pdflatex", "-interaction=nonstopmode", filename])
+        st.session_state.is_pdf_ready = True
+        #except:
+        #    st.write("Kunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
+        #    return
     else: 
         st.write("Ingen data fra brukeren funnet.")
 

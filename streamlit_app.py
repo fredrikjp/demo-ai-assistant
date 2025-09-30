@@ -627,14 +627,7 @@ def json_to_CVpdf():
                 f.write(latex_CVcode)
             # Compile to PDF using pdflatex
             subprocess.run(["pdflatex", "-interaction=nonstopmode", filename])
-            # Display download link for PDF
-            pdf_filename = filename.replace(".tex", ".pdf")
-            with open(pdf_filename, "rb") as pdf_file:
-                PDFbyte = pdf_file.read()
-            b64 = base64.b64encode(PDFbyte).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64}" download="CV.pdf">Last ned CV (PDF)</a>'
-            st.markdown(href, unsafe_allow_html=True)
-
+            st.session_state.is_pdf_ready = True
         except:
             st.write("Kunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
             return
@@ -738,9 +731,11 @@ has_message_history = (
     "messages" in st.session_state and len(st.session_state.messages) > 0
 )
 
+
 # Show a different UI when the user hasn't asked a question yet.
 if not user_first_interaction and not has_message_history:
     st.session_state.messages = []
+    st.session_state.is_pdf_ready = False
 
     with st.container():
         st.chat_input("Ask a question...", key="initial_question")
@@ -811,14 +806,15 @@ for i, message in enumerate(st.session_state.messages):
 
         st.markdown(message["content"])
 
-        if message["role"] == "assistant":
-            show_feedback_controls(i)
+        #if message["role"] == "assistant":
+        #    show_feedback_controls(i)
 
 
 
 if user_message:
     # When the user posts a message...
 
+    st.session_state.generate_CV_button_clicked = False
     # Streamlit's Markdown engine interprets "$" as LaTeX code (used to
     # display math). The line below fixes it.
     user_message = user_message.replace("$", r"\$")
@@ -882,18 +878,27 @@ if user_message:
                         st.session_state.initial_CV_questions = True
 
                 save_JSONstr_to_dict(json_str)
-                st.write(st.session_state.CV_dict)
-                st.button("Generer CV i PDF format", on_click=json_to_CVpdf)
-                if "CV.pdf" in os.listdir():
-                    st.download_button(
-                        label="Last ned pdf",
-                        data="CV.pdf",
-                        file_name="CV_data.json",
-                        mime="application/json"
-                    )
 
+if "CV_dict" in st.session_state:
+    if st.button("Generer CV", key="generate_CV_button"):
+        with st.spinner("Genererer CV..."):
+            json_to_CVpdf()
+            try:
+                with open("CV.pdf", "rb") as f:
+                    st.session_state["CV_pdf"] = f.read()
+            except FileNotFoundError:
+                st.write("PDF ikke funnet. Vennligst prøv å generere CVen på nytt.")
 
-        #TODO: Create genereate CV button
+    if "CV_pdf" in st.session_state:
+        st.download_button(
+            type="primary",
+            label="Last ned pdf",
+            data=st.session_state["CV_pdf"],
+            file_name="CV.pdf",
+            mime='application/pdf'
+        )
+
+            #TODO: Create genereate CV button
 
 
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from streamlit.runtime.state import session_state
 from htbuilder.units import rem
 from htbuilder import div, styles
 from collections import namedtuple
@@ -22,7 +23,11 @@ import time
 
 import streamlit as st
 from openai import OpenAI
+import json
 import os
+import subprocess
+import base64
+
 
 
 
@@ -37,7 +42,7 @@ st.set_page_config(page_title="Streamlit AI assistant", page_icon="✨")
 
 executor = ThreadPoolExecutor(max_workers=5)
 
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-4.1"
 
 DB = "ST_ASSISTANT"
 SCHEMA = "PUBLIC"
@@ -49,58 +54,290 @@ DOCSTRINGS_CONTEXT_LEN = 10
 PAGES_CONTEXT_LEN = 10
 MIN_TIME_BETWEEN_REQUESTS = datetime.timedelta(seconds=3)
 
-CORTEX_URL = (
-    "https://docs.snowflake.com/en/guides-overview-ai-features"
-    "?utm_source=streamlit"
-    "&utm_medium=referral"
-    "&utm_campaign=streamlit-demo-apps"
-    "&utm_content=streamlit-assistant"
-)
-
 GITHUB_URL = "https://github.com/streamlit/streamlit-assistant"
 
 DEBUG_MODE = st.query_params.get("debug", "false").lower() == "true"
 
+LATEX_TEMPLATE = textwrap.dedent(r"""
+    \documentclass[10pt, letterpaper]{article}
+
+    % ========== Packages ==========
+    \usepackage[
+        ignoreheadfoot,
+        top=2 cm,
+        bottom=2 cm,
+        left=2 cm,
+        right=2 cm,
+        footskip=1.0 cm
+    ]{geometry}
+    \usepackage[explicit]{titlesec}
+    \usepackage{tabularx}
+    \usepackage{array}
+    \usepackage[dvipsnames]{xcolor}
+    \definecolor{primaryColor}{RGB}{0, 79, 144}
+    \usepackage{enumitem}
+    \usepackage{fontawesome5}
+    \usepackage{amsmath}
+    \usepackage[
+        pdftitle={CV},
+        pdfauthor={},
+        pdfcreator={LaTeX},
+        colorlinks=true,
+        urlcolor=primaryColor
+    ]{hyperref}
+    \usepackage{paracol}
+    \usepackage{changepage}
+    \usepackage{ifthen}
+    \usepackage{needspace}
+    \usepackage{lastpage}
+    \usepackage{bookmark}
+
+    % Ensure ATS readability
+    \usepackage[T1]{fontenc}
+    \usepackage[utf8]{inputenc}
+    \usepackage{lmodern}
+
+    \usepackage[default, type1]{sourcesanspro}
+
+    % ========== Styling ==========
+    \pagestyle{empty}
+    \setcounter{secnumdepth}{0}
+    \setlength{\parindent}{0pt}
+    \setlength{\columnsep}{0.15cm}
+
+    \titleformat{\section}{
+        \needspace{4\baselineskip}
+        \Large\color{primaryColor}
+    }{}{
+    }{
+        \textbf{#1}\hspace{0.15cm}\titlerule[0.8pt]\hspace{-0.1cm}
+    }[]
+
+    \titlespacing{\section}{-1pt}{0.3cm}{0.2cm}
+
+    \newenvironment{highlights}{
+        \begin{itemize}[
+            topsep=0.10cm,
+            parsep=0.10cm,
+            itemsep=0pt,
+            leftmargin=0.5cm
+        ]
+    }{
+        \end{itemize}
+    }
+
+    \newenvironment{onecolentry}{
+        \begin{adjustwidth}{0.2cm}{0.2cm}
+    }{
+        \end{adjustwidth}
+    }
+
+    \newenvironment{twocolentry}[2][]{
+        \onecolentry
+        \def\secondColumn{#2}
+        \setcolumnwidth{\fill, 4.5cm}
+        \begin{paracol}{2}
+    }{
+        \switchcolumn \raggedleft \secondColumn
+        \end{paracol}
+        \endonecolentry
+    }
+
+    % ========== Document ==========
+    \begin{document}
+
+    % ---------- Header ----------
+    \begin{center}
+        {\fontsize{28pt}{30pt}\selectfont \textbf{Navn}} \\[6pt]
+        \faBirthdayCake \ Fødselsdato \quad | \quad
+        \faEnvelope[regular] \ Epost \quad | \quad
+        \faPhone* \ Telefonnummer \quad | \quad
+        \faMapMarker* \ Adresse
+    \end{center}
+
+    \vspace{0.5cm}
+
+
+    % ---------- Summary ----------
+    \section{Sammendrag}
+    Sammendrag
+
+    % ---------- Education ----------
+    \section{Utdanning}
+    \begin{twocolentry}{Trinn/Ferdig\_år}
+        \textbf{Grad} – Skole
+        \begin{highlights}
+            \item Ytterligere\_informasjon
+        \end{highlights}
+    \end{twocolentry}
+
+    % ---------- Experience ----------
+    \section{Arbeidserfaring}
+    \begin{twocolentry}{Periode}
+        \textbf{Tittel}, Firma
+        \begin{highlights}
+            \item Beskrivelse
+        \end{highlights}
+    \end{twocolentry}
+
+    \vspace{0.2cm}
+
+    \subsection*{Dugnad}
+    \begin{twocolentry}{Periode}
+        \textbf{Oppdrag}
+        \begin{highlights}
+            \item Beskrivelse
+        \end{highlights}
+    \end{twocolentry}
+
+    % ---------- Skills ----------
+    \section{Ferdigheter}
+    \begin{onecolentry}
+        \textbf{Ferdigheter og kompetanser:}
+        \begin{highlights}
+            \item Ferdighet (Nivå): Beskrivelse
+        \end{highlights}
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Språk:} Språk (Nivå)
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Sertifikater:} \\
+        Ingen oppgitt
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Annet:} \\
+        Ingen oppgitt
+    \end{onecolentry}
+
+    % ---------- Interests ----------
+    \section{Interesser og hobbyer}
+    \begin{onecolentry}
+        \textbf{Interesse/Hobby} – Beskrivelse
+    \end{onecolentry}
+
+    % ---------- Future Goals ----------
+    \section{Fremtidige mål}
+    \begin{onecolentry}
+        \textbf{Fremtidsutsikter og mål:} Fremtidsutsikter\_og\_mål
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Jobbønsker:}
+        \begin{highlights}
+            \item Jobbønske – Begrunnelse
+        \end{highlights}
+    \end{onecolentry}
+
+    \end{document}
+""")
+
 INSTRUCTIONS = textwrap.dedent("""
-    - You are a helpful AI chat assistant focused on answering quesions about
-      Streamlit, Streamlit Community Cloud, Snowflake, and general Python.
-    - You will be given extra information provided inside tags like this
+    - Du er en hjelpfull AI assistent som skal samle informasjon fra brukeren som er nødvendig for å generere en god CV.
+    - Du vil få ekstra informasjon gitt inni tagger som dette
       <foo></foo>.
-    - Use context and history to provide a coherent answer.
-    - Use markdown such as headers (starting with ##), code blocks, bullet
-      points, indentation for sub bullets, and backticks for inline code.
-    - Don't start the response with a markdown header.
-    - Assume the user is a newbie.
-    - Be brief, but clear. If needed, you can write paragraphs of text, like
-      a documentation website.
-    - Avoid experimental and private APIs.
-    - Provide examples.
-    - Include related links throughout the text and at the bottom.
-    - Don't say things like "according to the provided context".
-    - Streamlit is a product of Snowflake.
-    - Offer alternatives within the Streamlit and Snowflake universe.
-    - For information about deploying in Snowflake, see
-      https://www.snowflake.com/en/product/features/streamlit-in-snowflake/
+    - Bruk context og historikk for å gi en kort sammenhengende respons og nytt spørsmål for å samle gjenstående manglende informasjon eller utdyping.
+    - Bruk markdown.
+    - Anta at brukeren er nybegynner.
+    - Vær klar og presis. Unngå lange svar. Still spørsmål som krever svar på maksimalt ett avsnitt. Hvis du trenger mer informasjon, still et nytt spørsmål.
+    - Dersom du trenger ett ords informasjon som navn, epost, telefonnummer osv. lag en liste med rimelig antall punkter.
+    - Minimer cognitive load. Still et spørsmål av gangen dersom det krever setninger fra brukeren.
+    - Tilpass spørsmålene dine basert på tidligere svar og hva du lærer om brukeren (f.eks. alder vil være veldig relevant for en ung søker).
+    - Gi eksempler tilpasset brukeren.
+""")
+
+# Instruct a second LLM to analyze the response and output data for the CV in JSON format.
+INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE = textwrap.dedent("""
+    - Du er en hjelpfull AI assistent som skal trekke ut informasjon fra en samtale med en bruker for å generere en JSON strukturert datafil som kan brukes til å lage en god CV.
+    - Du vil få spørsmål fra assistenten og svar fra brukeren, og ditt mål er å trekke ut relevant informasjon og forstå hvilke spørsmål infromasjonen svarer på.
+    - Du skal returnere elementer i en JSON struktur som følger denne malen:
+        {
+            "Personalia": {
+                "Navn": "",
+                "Fødselsdato": "",
+                "Epost": "",
+                "Telefonnummer": "",
+                "Adresse": ""
+            },
+            "Utdanning": [
+                {
+                    "Grad": "",
+                    "Trinn/Ferdig_år": "",
+                    "Skole": "",
+                    "Ytterligere_informasjon": ""
+                }
+            ],
+            "Arbeidserfaring": {
+                "Stillinger": [
+                    {
+                        "Tittel": "",
+                        "Firma": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }
+                ],
+                "Dugnad": [
+                    {
+                        "Oppdrag": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }
+                ]
+            },
+            "Ferdigheter": {
+                "Ferdigheter_og_kompetanser": [
+                    {
+                        "Ferdighet": "",
+                        "Nivå": "",
+                        "Beskrivelse": ""
+                    }
+                ],
+                "Språk": [
+                    {
+                        "Språk": "",
+                        "Nivå": ""
+                    }
+                ],
+                "Sertifikater": [],
+                "Annet": []
+            },
+            "Interesser_og_hobbyer": [
+                {
+                    "Interesse/Hobby": "",
+                    "Beskrivelse": ""
+                }
+            ],
+            "Fremtidige_mål": {
+                "Fremtidsutsikter_og_mål": "",
+                "Jobbønsker": [
+                    {
+                        "Jobbønske": "",
+                        "Begrunnelse": ""
+                    }
+                ]
+            }
+        }
+    - Returner KUN informasjonen brukeren nettopp ga (ikke informasjon fra samtale historien) f.ks.: "Personalia": {"Navn": "Ola Nordmann", "Fødseldato": "01.01.2000"}
+    - Ellers legg til ny informasjon i lister (f.eks. utdanning, arbeidserfaring, ferdigheter osv.).
+    - Dersom du ikke har fått informasjon om et felt, la det være tomt.
 """)
 
 SUGGESTIONS = {
     ":blue[:material/local_library:] Hjelp til å generere en proffesjonell clean CV": (
-        "What is Streamlit, what is it great at, and what can I do with it?"
+        ""
     ),
     ":orange[:material/call:] AI assistert jobb intervju": (
-        "How do I make a chart where, when I click, another chart updates? "
-        "Show me examples with Altair or Plotly."
+        ""
     ),
     ":green[:material/database:] Lag et skreddersydd søknadsbrev": (
-        "Help me understand session state. What is it for? "
-        "What are gotchas? What are alternatives?"
+        ""
     ),
     ":red[:material/multiline_chart:] Foreslå jobbalternativer": (
-        "How do I make a chart where, when I click, another chart updates? "
-        "Show me examples with Altair or Plotly."
+        ""
     ),
-    
-
 }
 
 
@@ -142,7 +379,7 @@ TaskInfo = namedtuple("TaskInfo", ["name", "function", "args"])
 TaskResult = namedtuple("TaskResult", ["name", "result"])
 
 
-def build_question_prompt(question):
+def build_question_prompt(question, JSON_GENERATOR=False):
     """Fetches info from different services and creates the prompt string."""
     old_history = st.session_state.messages[:-HISTORY_LENGTH]
     recent_history = st.session_state.messages[-HISTORY_LENGTH:]
@@ -175,7 +412,7 @@ def build_question_prompt(question):
     context = {name: result for name, result in results}
 
     return build_prompt(
-        instructions=INSTRUCTIONS,
+        instructions=INSTRUCTIONS if not JSON_GENERATOR else INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE,
         **context,
         recent_messages=recent_history_str,
         question=question,
@@ -234,15 +471,189 @@ def get_response(prompt):
         content = getattr(chunk.choices[0].delta, "content", None)
         if content:
             yield content
-    """
-    return complete(
-        MODEL,
-        prompt,
-        stream=True,
-        session=get_session(),
-    )
-"""
+#   return complete(
+#       MODEL,
+#       prompt,
+#       stream=True,
+#       session=get_session(),
+#   )
+#
 
+def deep_update(original, new_data):
+    """
+    Recursively update a nested dict or list with new values.
+    Dicts are merged, lists are updated element by element.
+    """
+    if isinstance(original, dict) and isinstance(new_data, dict):
+        for k, v in new_data.items():
+            if k in original:
+                original[k] = deep_update(original[k], v)
+            else:
+                original[k] = v
+        return original
+
+    elif isinstance(original, list) and isinstance(new_data, list):
+        # Update existing items by index
+        for i, v in enumerate(new_data):
+            print("new data item:")
+            print(i)
+            print(new_data)
+
+            #Catch primitive types in lists
+            if isinstance(v, (str, int, float)) or v is None:
+                print("primitive in list")
+                if v not in original:
+                    original.append(v)
+                continue
+
+            for key, value in v.items():
+                if key in original[-1] and original[-1][key] == "" or original[-1][key] == value:
+                    original[-1] = deep_update(original[-1], v)
+                elif key not in original[-1]:
+                    original[-1][key] = v[key]
+                else:
+                    original.append(new_data[i])
+                    print("appending")
+                    print(new_data[i])
+        return original
+
+    else:
+        # Primitive (str, int, etc.) → overwrite
+        return new_data
+
+def save_JSONstr_to_dict(json_str):
+    """Saves LLM json string output to predefined dictionary storing CV data."""
+    if "CV_dict" not in st.session_state:
+
+        st.session_state.CV_dict = {
+            "Personalia": {
+                "Navn": "",
+                "Fødselsdato": "",
+                "Epost": "",
+                "Telefonnummer": "",
+                "Adresse": ""
+            },
+            "Utdanning": [
+                {
+                    "Grad": "",
+                    "Trinn/Ferdig_år": "",
+                    "Skole": "",
+                    "Ytterligere_informasjon": ""
+                }
+            ],
+            "Arbeidserfaring": {
+                "Stillinger": [
+                    {
+                        "Tittel": "",
+                        "Firma": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }
+                ],
+                "Dugnad": [
+                    {
+                        "Oppdrag": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }
+                ]
+            },
+            "Ferdigheter": {
+                "Ferdigheter_og_kompetanser": [
+                    {
+                        "Ferdighet": "",
+                        "Nivå": "",
+                        "Beskrivelse": ""
+                    }
+                ],
+                "Språk": [
+                    {
+                        "Språk": "",
+                        "Nivå": ""
+                    }
+                ],
+                "Sertifikater": [],
+                "Annet": []
+            },
+            "Interesser_og_hobbyer": [
+                {
+                    "Interesse/Hobby": "",
+                    "Beskrivelse": ""
+                }
+            ],
+            "Fremtidige_mål": {
+                "Fremtidsutsikter_og_mål": "",
+                "Jobbønsker": [
+                    {
+                        "Jobbønske": "",
+                        "Begrunnelse": ""
+                    }
+                ]
+            }
+        }
+    try:
+        data_dict = json.loads(json_str)
+        st.session_state.CV_dict = deep_update(st.session_state.CV_dict, data_dict)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON: {e}")
+
+def json_to_CVpdf():
+    """Generates a CV PDF from the JSON data."""
+    if "CV_dict" in st.session_state:
+        promt = textwrap.dedent(f""" 
+            - Lag en proffesjonell CV i latex format basert på JSON data.
+            - Bruk informasjon som alder og erfaringer til å tilpasse CVen.
+            - JSON data: {st.session_state.CV_dict}
+            - Bruk denne latex malen: {LATEX_TEMPLATE}
+            """)
+
+        latex_response_gen = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "You are a LaTeX generator."},
+                {"role": "user", "content": promt}
+            ],
+        )
+        latex_CVcode = latex_response_gen.choices[0].message.content
+
+        # Save to file named with user's name and day of birth
+        try:
+            #extract_personalia_from_json(json.dumps(st.session_state.CV_dict))
+            #filename = base64.urlsafe_b64encode(f"{st.session_state.personalia_name}_{st.session_state.personalia_dob}".encode()).decode() + ".tex"
+            #st.write(filename)
+            #print(filename)
+            filename = "CV.tex"
+            with open(filename, mode="w", encoding="utf-8") as f:
+                f.write(latex_CVcode)
+            # Compile to PDF using pdflatex
+            subprocess.run(["pdflatex", "-interaction=nonstopmode", filename])
+            # Display download link for PDF
+            pdf_filename = filename.replace(".tex", ".pdf")
+            with open(pdf_filename, "rb") as pdf_file:
+                PDFbyte = pdf_file.read()
+            b64 = base64.b64encode(PDFbyte).decode()
+            href = f'<a href="data:application/octet-stream;base64,{b64}" download="CV.pdf">Last ned CV (PDF)</a>'
+            st.markdown(href, unsafe_allow_html=True)
+
+        except:
+            st.write("Kunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
+            return
+    else: 
+        st.write("Ingen data fra brukeren funnet.")
+
+def generator_to_string(gen):
+    """Converts a generator (such as openai stream) to a string."""
+    return "".join(chunk for chunk in gen if isinstance(chunk, str))
+
+def extract_personalia_from_json(json_str):
+    """Extracts name and date of birth from JSON string and saves to session state."""
+    personalia_dict = json.loads(json_str)
+    st.session_state.personalia_name = personalia_dict["Personalia"]["Navn"]
+    st.session_state.personalia_dob = personalia_dict["Personalia"]["Fødselsdato"]
+    st.write(f"\n{st.session_state.personalia_name}, {st.session_state.personalia_dob}")
+    # If name and dob not given, or empty, ask again.
+    if st.session_state.personalia_name == "" or st.session_state.personalia_dob == "":
+        raise ValueError("Name or date of birth is empty.")
 
 def send_telemetry(**kwargs):
     """Records some telemetry about questions being asked."""
@@ -306,7 +717,6 @@ title_row = st.container(
 
 with title_row:
     st.title(
-        # ":material/cognition_2: Streamlit AI assistant", anchor=False, width="stretch"
         "Ungt Steg AI assistent",
         anchor=False,
         width="stretch",
@@ -353,12 +763,29 @@ if not user_first_interaction and not has_message_history:
 # Show chat input at the bottom when a question has been asked.
 user_message = st.chat_input("Ask a follow-up...")
 
+
+
 if not user_message:
+    st.session_state.json_response = "{}"  # Initialize empty JSON response
     if user_just_asked_initial_question:
         user_message = st.session_state.initial_question
+        st.session_state.CV_mode = False
     if user_just_clicked_suggestion:
-        user_message = SUGGESTIONS[st.session_state.selected_suggestion]
-        #TODO: A suggestion should be a mode where the assistant asks a set of questions getting information from the user to train or build documents for the user.
+        #user_message = SUGGESTIONS[st.session_state.selected_suggestion]
+        st.session_state.CV_mode = True
+
+        # Initial quesstion from the chatbot
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Hei! Jeg er her for å hjelpe deg med å lage en CV. "
+                        "For å komme i gang, skriv ditt fulle navn og fødselsdato (DD.MM.ÅÅ)"
+                ),
+            }
+        )
+        st.session_state.initial_CV_questions = True
+
 
 with title_row:
 
@@ -386,6 +813,8 @@ for i, message in enumerate(st.session_state.messages):
 
         if message["role"] == "assistant":
             show_feedback_controls(i)
+
+
 
 if user_message:
     # When the user posts a message...
@@ -435,6 +864,40 @@ if user_message:
             st.session_state.messages.append({"role": "user", "content": user_message})
             st.session_state.messages.append({"role": "assistant", "content": response})
 
+            # Get the previous user and assistant message.
+            if st.session_state.CV_mode and len(st.session_state.messages) > 1: # Length 1 means only the initial question from the assistant
+                assistant_question = st.session_state.messages[-3]["content"] # The last message is the question from the assistant yet to be answered
+                user_answer = st.session_state.messages[-2]["content"]
+                json_prompt = build_question_prompt(f"Spørsmål: {assistant_question}\nSvar: {user_answer}", JSON_GENERATOR=True)
+                json_response_gen = get_response(json_prompt)
+                json_str = generator_to_string(json_response_gen)
+
+                # Save personalia name and dob (from initial question) to session state.
+                if st.session_state.initial_CV_questions:
+                    try:
+                        extract_personalia_from_json(json_str)
+                        st.session_state.initial_CV_questions = False
+                    except:
+                        st.write("\nKunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
+                        st.session_state.initial_CV_questions = True
+
+                save_JSONstr_to_dict(json_str)
+                st.write(st.session_state.CV_dict)
+                st.button("Generer CV i PDF format", on_click=json_to_CVpdf)
+                if "CV.pdf" in os.listdir():
+                    st.download_button(
+                        label="Last ned pdf",
+                        data="CV.pdf",
+                        file_name="CV_data.json",
+                        mime="application/json"
+                    )
+
+
+        #TODO: Create genereate CV button
+
+
+
             # Other stuff.
-            show_feedback_controls(len(st.session_state.messages) - 1)
-            send_telemetry(question=user_message, response=response)
+            #show_feedback_controls(len(st.session_state.messages) - 1)
+            #send_telemetry(question=user_message, response=response)
+

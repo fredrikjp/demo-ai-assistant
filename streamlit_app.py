@@ -884,7 +884,8 @@ if "CV_dict" in st.session_state:
             try:
                 with open("CV.pdf", "rb") as f:
                     st.session_state["CV_pdf"] = f.read()
-            except FileNotFoundError:
+            except FileNotFoundError as e:
+                st.write(e)
                 st.write("PDF ikke funnet. Vennligst prøv å generere CVen på nytt.")
 
     if "CV_pdf" in st.session_state:

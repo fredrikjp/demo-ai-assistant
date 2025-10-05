@@ -68,6 +68,7 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
         bottom=2 cm,
         left=2 cm,
         right=2 cm,
+        headsep=1.0 cm,
         footskip=1.0 cm
     ]{geometry}
     \usepackage[explicit]{titlesec}
@@ -97,7 +98,8 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
     \usepackage[utf8]{inputenc}
     \usepackage{lmodern}
 
-    \usepackage[default, type1]{sourcesanspro}
+    \usepackage[default]{sourcesanspro} % clean sans-serif font
+
 
     % ========== Styling ==========
     \pagestyle{empty}
@@ -148,19 +150,22 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
 
     % ---------- Header ----------
     \begin{center}
-        {\fontsize{28pt}{30pt}\selectfont \textbf{Navn}} \\[6pt]
+        {\fontsize{28pt}{30pt}\selectfont \textbf{Navn}} \\[12pt]
+        \small
         \faBirthdayCake \ Fødselsdato \quad | \quad
         \faEnvelope[regular] \ Epost \quad | \quad
         \faPhone* \ Telefonnummer \quad | \quad
         \faMapMarker* \ Adresse
     \end{center}
 
-    \vspace{0.5cm}
+    \vspace{0.8cm}
 
 
     % ---------- Summary ----------
     \section{Sammendrag}
-    Sammendrag
+    \begin{onecolentry}
+    Sammendrag\_tekst
+    \end{onecolentry}
 
     % ---------- Education ----------
     \section{Utdanning}
@@ -173,6 +178,7 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
 
     % ---------- Experience ----------
     \section{Arbeidserfaring}
+    \subsection*{Stillinger}
     \begin{twocolentry}{Periode}
         \textbf{Tittel}, Firma
         \begin{highlights}
@@ -180,7 +186,7 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
         \end{highlights}
     \end{twocolentry}
 
-    \vspace{0.2cm}
+    \vspace{0.3cm}
 
     \subsection*{Dugnad}
     \begin{twocolentry}{Periode}
@@ -205,12 +211,12 @@ LATEX_TEMPLATE = textwrap.dedent(r"""
 
     \begin{onecolentry}
         \textbf{Sertifikater:} \\
-        Ingen oppgitt
+        Sertifikater
     \end{onecolentry}
 
     \begin{onecolentry}
         \textbf{Annet:} \\
-        Ingen oppgitt
+        Annet
     \end{onecolentry}
 
     % ---------- Interests ----------
@@ -734,6 +740,7 @@ has_message_history = (
 if not user_first_interaction and not has_message_history:
     st.session_state.messages = []
     st.session_state.is_pdf_ready = False
+    st.session_state.initial_stream_done = False
 
     with st.container():
         st.chat_input("Ask a question...", key="initial_question")
@@ -802,8 +809,18 @@ for i, message in enumerate(st.session_state.messages):
         if message["role"] == "assistant":
             st.container()  # Fix ghost message bug.
 
-        st.markdown(message["content"])
+        if not st.session_state.initial_stream_done:
+            def generator_initial_question(text, delay=0.01):
+                for ch in text:
+                    yield ch
+                    time.sleep(delay)
+                # Streaming done boolean
+                st.session_state.initial_stream_done = True
 
+            response = st.write_stream(generator_initial_question(st.session_state.messages[-1]["content"]))
+            continue
+
+        st.markdown(message["content"])
         #if message["role"] == "assistant":
         #    show_feedback_controls(i)
 

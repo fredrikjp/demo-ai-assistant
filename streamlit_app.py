@@ -27,7 +27,7 @@ import json
 import os
 import subprocess
 import base64
-
+import sys, os
 
 
 
@@ -253,6 +253,7 @@ INSTRUCTIONS = textwrap.dedent("""
     - Minimer cognitive load. Still et spørsmål av gangen dersom det krever setninger fra brukeren.
     - Tilpass spørsmålene dine basert på tidligere svar og hva du lærer om brukeren (f.eks. alder vil være veldig relevant for en ung søker).
     - Gi eksempler tilpasset brukeren.
+    - Still spørsmål i en logisk rekkefølge (f.eks. personalia først, deretter utdanning, arbeidserfaring, ferdigheter, interesser og fremtidige mål).
 """)
 
 # Instruct a second LLM to analyze the response and output data for the CV in JSON format.
@@ -773,6 +774,7 @@ if not user_message:
     if user_just_clicked_suggestion:
         #user_message = SUGGESTIONS[st.session_state.selected_suggestion]
         st.session_state.CV_mode = True
+        st.session_state.CV_uploaded = False
 
         # Initial quesstion from the chatbot
         st.session_state.messages.append(
@@ -803,8 +805,13 @@ with title_row:
 if "prev_question_timestamp" not in st.session_state:
     st.session_state.prev_question_timestamp = datetime.datetime.fromtimestamp(0)
 
+# PDF uploader
+uploaded_cv = st.file_uploader("Last opp eksisterende CV (pdf)", type=["pdf"])
+
 # Display chat messages from history as speech bubbles.
 for i, message in enumerate(st.session_state.messages):
+    if message["role"] == "pdf_uploaded":
+        continue
     with st.chat_message(message["role"]):
         if message["role"] == "assistant":
             st.container()  # Fix ghost message bug.
@@ -823,6 +830,118 @@ for i, message in enumerate(st.session_state.messages):
         st.markdown(message["content"])
         #if message["role"] == "assistant":
         #    show_feedback_controls(i)
+
+# If a CV has been uploaded, extract text and use LLM to parse it.
+if uploaded_cv is not None and not st.session_state.CV_uploaded:
+    import pymupdf
+    pdf_text = ""
+    with pymupdf.open(stream=uploaded_cv.read(), filetype="pdf") as doc:
+        for page in doc:
+            pdf_text += page.get_text()
+
+    # Use LLM to extract relevant info from the CV text.
+    extraction_prompt = textwrap.dedent(f"""
+        - Trekk ut relevant informasjon fra denne CVen og strukturer den i JSON format.
+        - CV tekst: {pdf_text}
+        - Returner informasjonen i JSON format etter denne malen:
+        {{
+            "Personalia": {{
+                "Navn": "",
+                "Fødselsdato": "",
+                "Epost": "",
+                "Telefonnummer": "",
+                "Adresse": ""
+            }},
+            "Utdanning": [
+                {{
+                    "Grad": "",
+                    "Trinn/Ferdig_år": "",
+                    "Skole": "",
+                    "Ytterligere_informasjon": ""
+                }}
+            ],
+            "Arbeidserfaring": {{
+                "Stillinger": [
+                    {{
+                        "Tittel": "",
+                        "Firma": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }}
+                ],
+                "Dugnad": [
+                    {{
+                        "Oppdrag": "",
+                        "Periode": "",
+                        "Beskrivelse": ""
+                    }}
+                ]
+            }},
+            "Ferdigheter": {{
+                "Ferdigheter_og_kompetanser": [
+                    {{
+                        "Ferdighet": "",
+                        "Nivå": "",
+                        "Beskrivelse": ""
+                    }}
+                ],
+                "Språk": [
+                    {{
+                        "Språk": "",
+                        "Nivå": ""
+                    }}
+                ],
+                "Sertifikater": [],
+                "Annet": []
+            }},
+            "Interesser_og_hobbyer": [
+                {{
+                    "Interesse/Hobby": "",
+                    "Beskrivelse": ""
+                }}
+            ],
+            "Fremtidige_mål": {{
+                "Fremtidsutsikter_og_mål": "",
+                "Jobbønsker": [
+                    {{
+                        "Jobbønske": "",
+                        "Begrunnelse": ""
+                    }}
+                ]
+            }}
+        }}
+        """)
+    with st.spinner("Leser og tolker CV..."):
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "You are a CV data extractor."},
+                {"role": "user", "content": extraction_prompt}
+            ],
+        )
+    try:
+        json_data = response.choices[0].message.content
+        st.session_state.CV_dict = json.loads(json_data)
+        st.success("CV data lastet inn!")
+        # Get next question from the assistant based on the extracted data.
+        st.session_state.messages.append(
+                {
+                    "role": "pdf_uploaded",
+                    "content": f"Bruker har lastet opp en CV med følgende informasjon: {json_data}. Bekreft at du har mottatt informasjonen og still et nytt spørsmål for å samle mer eller manglende informasjon",
+                }
+        )
+        user_message = st.session_state.messages[-1]["content"]
+        with st.spinner("Analyserer CV..."):
+            full_prompt = build_question_prompt(st.session_state.messages[-1]["content"])
+            response_gen = get_response(full_prompt)
+            response = generator_to_string(response_gen)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.CV_uploaded = True # Prevent re-processing the same CV
+
+
+    except json.JSONDecodeError as e:
+        st.write("Kunne ikke tolke CVen. Vennligst prøv en annen CV.")
+
 
 
 

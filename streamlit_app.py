@@ -833,11 +833,11 @@ for i, message in enumerate(st.session_state.messages):
 
 # If a CV has been uploaded, extract text and use LLM to parse it.
 if uploaded_cv is not None and not st.session_state.CV_uploaded:
-    import pymupdf
+    from PyPDF2 import PdfReader
     pdf_text = ""
-    with pymupdf.open(stream=uploaded_cv.read(), filetype="pdf") as doc:
-        for page in doc:
-            pdf_text += page.get_text()
+    reader = PdfReader(uploaded_cv)
+    for page in reader.pages:
+        pdf_text += page.extract_text() or ""
 
     # Use LLM to extract relevant info from the CV text.
     extraction_prompt = textwrap.dedent(f"""

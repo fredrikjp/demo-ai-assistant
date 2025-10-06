@@ -956,9 +956,12 @@ if user_message:
     user_message = user_message.replace("$", r"\$")
 
     # Display message as a speech bubble.
-    if not st.session_state.messages[-2]["role"] == "pdf_uploaded":
-        with st.chat_message("user"):
-            st.text(user_message)
+    try:
+        if not st.session_state.messages[-2]["role"] == "pdf_uploaded":
+            with st.chat_message("user"):
+                st.text(user_message)
+    except: 
+        st.text(user_message)
 
     # Display assistant response as a speech bubble.
     with st.chat_message("assistant"):

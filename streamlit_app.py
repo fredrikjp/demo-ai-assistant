@@ -808,6 +808,9 @@ if "prev_question_timestamp" not in st.session_state:
 # PDF uploader
 uploaded_cv = st.file_uploader("Last opp eksisterende CV (pdf)", type=["pdf"])
 
+if uploaded_cv is not None and not st.session_state.CV_uploaded:
+    st.session_state.messages = []
+
 # Display chat messages from history as speech bubbles.
 for i, message in enumerate(st.session_state.messages):
     if message["role"] == "pdf_uploaded":
@@ -954,8 +957,9 @@ if user_message:
     user_message = user_message.replace("$", r"\$")
 
     # Display message as a speech bubble.
-    with st.chat_message("user"):
-        st.text(user_message)
+    if not st.session_state.messages[-2]["role"] == "pdf_uploaded":
+        with st.chat_message("user"):
+            st.text(user_message)
 
     # Display assistant response as a speech bubble.
     with st.chat_message("assistant"):
@@ -1003,7 +1007,7 @@ if user_message:
                 json_str = generator_to_string(json_response_gen)
 
                 # Save personalia name and dob (from initial question) to session state.
-                if st.session_state.initial_CV_questions:
+                if st.session_state.initial_CV_questions and st.session_state.CV_uploaded == False:
                     try:
                         extract_personalia_from_json(json_str)
                         st.session_state.initial_CV_questions = False

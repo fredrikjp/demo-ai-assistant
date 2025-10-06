@@ -831,13 +831,13 @@ for i, message in enumerate(st.session_state.messages):
         #if message["role"] == "assistant":
         #    show_feedback_controls(i)
 
-# If a CV has been uploaded, extract text and use LLM to parse it.
+# Extract text from uploaded CV(pdf) and use LLM to parse it.
 if uploaded_cv is not None and not st.session_state.CV_uploaded:
-    from PyPDF2 import PdfReader
+    import pymupdf
     pdf_text = ""
-    reader = PdfReader(uploaded_cv)
-    for page in reader.pages:
-        pdf_text += page.extract_text() or ""
+    with pymupdf.open(stream=uploaded_cv.read(), filetype="pdf") as doc:
+        for page in doc:
+            pdf_text += page.get_text()
 
     # Use LLM to extract relevant info from the CV text.
     extraction_prompt = textwrap.dedent(f"""

@@ -947,7 +947,6 @@ if uploaded_cv is not None and not st.session_state.CV_uploaded:
 
 
 
-
 if user_message:
     # When the user posts a message...
 

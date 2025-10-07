@@ -1240,7 +1240,7 @@ if user_message:
 if "CV_dict" in st.session_state:
     if st.button("Generer CV", key="generate_CV_button"):
         with st.spinner("Genererer CV..."):
-            generate_Word_docx(st.session_state.CV_dict)
+            #generate_Word_docx(st.session_state.CV_dict)
             json_to_CVpdf()
             try:
                 with open("CV.pdf", "rb") as f:
@@ -1258,16 +1258,16 @@ if "CV_dict" in st.session_state:
             mime='application/pdf'
         )
 
-    if "CV_pdf" in st.session_state:
-        # Download button
-        cv_buffer = generate_Word_docx(st.session_state.CV_dict)
-        st.download_button(
-            type="primary",
-            label="Last ned CV som Word docx",
-            data=cv_buffer,
-            file_name="cv.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )           #TODO: Create genereate CV button
+#   if "CV_pdf" in st.session_state:
+#       # Download button
+#       cv_buffer = generate_Word_docx(st.session_state.CV_dict)
+#       st.download_button(
+#           type="primary",
+#           label="Last ned CV som Word docx",
+#           data=cv_buffer,
+#           file_name="cv.docx",
+#           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+#       )           #TODO: Create genereate CV button
 
 
 

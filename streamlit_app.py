@@ -336,13 +336,13 @@ SUGGESTIONS = {
     ":blue[:material/local_library:] Hjelp til å generere en proffesjonell clean CV": (
         ""
     ),
-    ":orange[:material/call:] AI assistert jobb intervju": (
+    ":orange[:material/call:] AI assistert jobb intervju (kommer snart!)": (
         ""
     ),
-    ":green[:material/database:] Lag et skreddersydd søknadsbrev": (
+    ":green[:material/database:] Lag et skreddersydd søknadsbrev (kommer snart!)": (
         ""
     ),
-    ":red[:material/multiline_chart:] Foreslå jobbalternativer": (
+    ":red[:material/multiline_chart:] Foreslå jobbalternativer (kommer snart!)": (
         ""
     ),
 }
@@ -656,6 +656,222 @@ def extract_personalia_from_json(json_str):
     if st.session_state.personalia_name == "" or st.session_state.personalia_dob == "":
         raise ValueError("Name or date of birth is empty.")
 
+def generate_Word_docx(CV_dict):
+#   from docx import Document
+#   
+    # Get a LLM to fix up the CV_dict so that the data is clean and ready for docx generation.
+    promt = textwrap.dedent(f"""
+        - Rydd opp i denne CV dataen, du kan omformulere og fjerne punkter som er irrelevante, forvirrende eller duplikater.
+        - Returner KUN den oppdaterte CV dataen i samme JSON format som du fikk.
+        - Sørg for at all dataen er optimalt formatert for en CV.
+        - Din output data skal brukes direkte til å generere en CV i Word docx.
+        - CV data: {CV_dict}
+        """)
+    json_response_gen = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": "You are a CV data cleaner."},
+            {"role": "user", "content": promt}
+        ],
+    )
+    json_response_str = json_response_gen.choices[0].message.content
+    try:
+        CV_dict = json.loads(json_response_str)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON for: {e}")
+        return
+
+#   # Assume your CV data is stored in st.session_state.CV_dict
+#   cv = CV_dict
+#   doc = Document()
+
+#   # --- Personalia ---
+#   doc.add_heading("Personalia", level=1)
+#   for key, value in cv["Personalia"].items():
+#       doc.add_paragraph(f"{key}: {value}")
+
+#   # --- Utdanning ---
+#   doc.add_heading("Utdanning", level=1)
+#   for edu in cv["Utdanning"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"Grad: {edu['Grad']}\n").bold = True
+#       p.add_run(f"Trinn/Ferdig år: {edu['Trinn/Ferdig_år']}\n")
+#       p.add_run(f"Skole: {edu['Skole']}\n")
+#       p.add_run(f"Ytterligere info: {edu['Ytterligere_informasjon']}")
+
+#   # --- Arbeidserfaring ---
+#   doc.add_heading("Arbeidserfaring", level=1)
+
+#   # Stillinger
+#   doc.add_heading("Stillinger", level=2)
+#   for jobb in cv["Arbeidserfaring"]["Stillinger"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"Tittel: {jobb['Tittel']}\n").bold = True
+#       p.add_run(f"Firma: {jobb['Firma']}\n")
+#       p.add_run(f"Periode: {jobb['Periode']}\n")
+#       p.add_run(f"Beskrivelse: {jobb['Beskrivelse']}")
+
+#   # Dugnad
+#   doc.add_heading("Dugnad", level=2)
+#   for dugnad in cv["Arbeidserfaring"]["Dugnad"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"Oppdrag: {dugnad['Oppdrag']}\n").bold = True
+#       p.add_run(f"Periode: {dugnad['Periode']}\n")
+#       p.add_run(f"Beskrivelse: {dugnad['Beskrivelse']}")
+
+#   # --- Ferdigheter ---
+#   doc.add_heading("Ferdigheter", level=1)
+#   for skill in cv["Ferdigheter"]["Ferdigheter_og_kompetanser"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"{skill['Ferdighet']} ({skill['Nivå']}): ").bold = True
+#       p.add_run(skill['Beskrivelse'])
+
+#   # Språk
+#   doc.add_heading("Språk", level=2)
+#   for lang in cv["Ferdigheter"]["Språk"]:
+#       doc.add_paragraph(f"{lang['Språk']}: {lang['Nivå']}")
+
+#   # Sertifikater
+#   if cv["Ferdigheter"]["Sertifikater"]:
+#       doc.add_heading("Sertifikater", level=2)
+#       for s in cv["Ferdigheter"]["Sertifikater"]:
+#           doc.add_paragraph(s)
+
+#   # Annet
+#   if cv["Ferdigheter"]["Annet"]:
+#       doc.add_heading("Annet", level=2)
+#       for a in cv["Ferdigheter"]["Annet"]:
+#           doc.add_paragraph(a)
+
+#   # --- Interesser og hobbyer ---
+#   doc.add_heading("Interesser og hobbyer", level=1)
+#   for hobby in cv["Interesser_og_hobbyer"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"{hobby['Interesse/Hobby']}: ").bold = True
+#       p.add_run(hobby['Beskrivelse'])
+
+#   # --- Fremtidige mål ---
+#   doc.add_heading("Fremtidige mål", level=1)
+#   doc.add_paragraph(cv["Fremtidige_mål"]["Fremtidsutsikter_og_mål"])
+
+#   for jobb in cv["Fremtidige_mål"]["Jobbønsker"]:
+#       p = doc.add_paragraph()
+#       p.add_run(f"Jobbønske: {jobb['Jobbønske']}\n").bold = True
+#       p.add_run(f"Begrunnelse: {jobb['Begrunnelse']}")
+#   from io import BytesIO
+
+#   # Create your docx in memory instead of saving to disk
+#   doc = Document()
+#   # ... add all your CV content as before ...
+
+#   # Save to a BytesIO object
+#   docx_buffer = BytesIO()
+#   doc.save(docx_buffer)
+#   docx_buffer.seek(0)  # move to start of the file
+
+#   # Store in session state
+#   st.session_state["CV_docx"] = docx_buffer.getvalue()
+
+
+#   # --- Save document ---
+#   doc.save("CV.docx")
+    import io
+    from docx import Document
+    from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.shared import Pt
+    import streamlit as st
+    doc = Document()
+    personalia = CV_dict.get("Personalia", {})
+    title = doc.add_paragraph()
+    title_run = title.add_run(personalia.get("Navn", ""))
+    title_run.bold = True
+    title_run.font.size = Pt(24)
+    title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    for key, value in personalia.items():
+        if key == "Navn" or not value:
+            continue
+        p = doc.add_paragraph()
+        run = p.add_run(f"{key}: ")
+        run.bold = True
+        p.add_run(str(value))
+    doc.add_paragraph()
+    utdanning = CV_dict.get("Utdanning", [])
+    if utdanning:
+        doc.add_heading("Utdanning", level=1)
+        for entry in utdanning:
+            summary = f"{entry.get('Grad', '')} – {entry.get('Skole', '')} ({entry.get('Trinn/ferdig_år', '')})"
+            doc.add_paragraph(summary, style="List Bullet")
+            if entry.get("Ytterligere_informasjon"):
+                doc.add_paragraph(entry["Ytterligere_informasjon"], style="List Continue")
+    
+    arbeid = CV_dict.get("Arbeidserfaring", {})
+    if arbeid.get("Stillinger") or arbeid.get("Dugnad"):
+        doc.add_heading("Arbeidserfaring", level=1)
+        for stilling in arbeid.get("Stillinger", []):
+            bullet = doc.add_paragraph(style="List Bullet")
+            header = bullet.add_run(f"{stilling.get('Tittel', '')}, {stilling.get('Firma', '')}, {stilling.get('Periode', '')})")
+            header.bold = True
+            if stilling.get("Beskrivelse"):
+                doc.add_paragraph(stilling["Beskrivelse"], style="List Continue")
+        if arbeid.get("Dugnad"):
+            doc.add_paragraph().add_run("Dugnad").italic = True
+            for dugnad in arbeid["Dugnad"]:
+                doc.add_paragraph(f"{dugnad.get('Oppdrag', '')} ({dugnad.get('Periode', '')})",
+    e="List Bullet")
+                if dugnad.get("Beskrivelse"):
+                    doc.add_paragraph(dugnad["Beskrivelse"], style="List Continue")
+    
+    ferdigheter = CV_dict.get("Ferdigheter", {})
+    if any(ferdigheter.values()):
+        doc.add_heading("Ferdigheter", level=1)
+        for skill in ferdigheter.get("Ferdigheter_og_kompetanser", []):
+            doc.add_paragraph(f"{skill.get('Ferdighet', '')} – {skill.get('Nivå', '')}",
+    e="List Bullet")
+            if skill.get("Beskrivelse"):
+                doc.add_paragraph(skill["Beskrivelse"], style="List Continue")
+        språk = ferdigheter.get("Språk", [])
+        if språk:
+            doc.add_paragraph("Språk:", style="Heading 3")
+            for item in språk:
+                doc.add_paragraph(f"{item.get('Språk', '')}: {item.get('Nivå', '')}",
+    e="List Bullet")
+        sertifikater = ferdigheter.get("Sertifikater", [])
+        if sertifikater:
+            doc.add_paragraph("Sertifikater:", style="Heading 3")
+            for cert in sertifikater:
+                doc.add_paragraph(cert, style="List Bullet")
+        annet = ferdigheter.get("Annet", [])
+        if annet:
+            doc.add_paragraph("Annet:", style="Heading 3")
+            for entry in annet:
+                doc.add_paragraph(entry, style="List Bullet")
+    
+    interesser = CV_dict.get("Interesser_og_hobbyer", [])
+    if interesser:
+        doc.add_heading("Interesser og hobbyer", level=1)
+        for entry in interesser:
+            doc.add_paragraph(entry.get("Interesse/Hobby", ""), style="List Bullet")
+            if entry.get("Beskrivelse"):
+                doc.add_paragraph(entry["Beskrivelse"], style="List Continue")
+    
+    mål = CV_dict.get("Fremtidige_mål", {})
+    if mål:
+        doc.add_heading("Fremtidige mål", level=1)
+        if mål.get("Fremtidsutsikter_og_mål"):
+            doc.add_paragraph(mål["Fremtidsutsikter_og_mål"])
+        if mål.get("Jobbønsker"):
+            doc.add_paragraph("Jobbønsker:", style="Heading 3")
+            for entry in mål["Jobbønsker"]:
+                doc.add_paragraph(entry.get("Jobbønske", ""), style="List Bullet")
+                if entry.get("Begrunnelse"):
+                    doc.add_paragraph(entry["Begrunnelse"], style="List Continue")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 def send_telemetry(**kwargs):
     """Records some telemetry about questions being asked."""
     # TODO: Implement this.
@@ -784,7 +1000,7 @@ if not user_message:
                 "role": "assistant",
                 "content": (
                     "Hei! Jeg er her for å hjelpe deg med å lage en CV. "
-                        "For å komme i gang, skriv ditt fulle navn og fødselsdato (DD.MM.ÅÅ)"
+                        "For å komme i gang, last opp din CV (pdf) eller skriv ditt fulle navn og fødselsdato (DD.MM.ÅÅ)"
                 ),
             }
         )
@@ -1024,6 +1240,7 @@ if user_message:
 if "CV_dict" in st.session_state:
     if st.button("Generer CV", key="generate_CV_button"):
         with st.spinner("Genererer CV..."):
+            generate_Word_docx(st.session_state.CV_dict)
             json_to_CVpdf()
             try:
                 with open("CV.pdf", "rb") as f:
@@ -1041,7 +1258,16 @@ if "CV_dict" in st.session_state:
             mime='application/pdf'
         )
 
-            #TODO: Create genereate CV button
+    if "CV_pdf" in st.session_state:
+        # Download button
+        cv_buffer = generate_Word_docx(st.session_state.CV_dict)
+        st.download_button(
+            type="primary",
+            label="Last ned CV som Word docx",
+            data=cv_buffer,
+            file_name="cv.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )           #TODO: Create genereate CV button
 
 
 

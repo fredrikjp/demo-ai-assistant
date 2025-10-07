@@ -611,7 +611,7 @@ def json_to_CVpdf():
             - Lag en proffesjonell CV i latex format basert på JSON data.
             - Bruk informasjon som alder og erfaringer til å tilpasse CVen.
             - Rydd opp i dataen, du kan omformulere og fjerne punkter som er irrelevante, forvirrende eller duplikater. 
-            - Resultatet skal være en ferdig CV leveringsklar til arbeidsgiver.
+            - Resultatet skal være en ferdig CV leveringsklar til arbeidsgiver (fjern tomme seksjoner).
             - JSON data: {st.session_state.CV_dict}
             - Bruk denne latex malen: {LATEX_TEMPLATE}
             """)

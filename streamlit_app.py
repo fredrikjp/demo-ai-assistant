@@ -254,7 +254,7 @@ INSTRUCTIONS = textwrap.dedent("""
     - Tilpass spørsmålene dine basert på tidligere svar og hva du lærer om brukeren (f.eks. alder vil være veldig relevant for en ung søker).
     - Gi eksempler tilpasset brukeren.
     - Still spørsmål i en logisk rekkefølge (f.eks. personalia først, deretter utdanning, arbeidserfaring, ferdigheter, interesser og fremtidige mål).
-""")
+""" + f"\n - Data samlet inn så langt:\n {st.session_state.CV_dict if 'CV_dict' in st.session_state else '{}'}\n Data/instruks bruker nettop oppga: {st.session_state.user_message if 'user_message' in st.session_state else '{}'} \n- Dersom alle nødvendige data er samlet inn, bekreft dette og si at brukeren kan trykke på knappen 'Generer CV' for å lage en proffesjonell CV i pdf format.")
 
 # Instruct a second LLM to analyze the response and output data for the CV in JSON format.
 INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE = textwrap.dedent("""
@@ -610,6 +610,8 @@ def json_to_CVpdf():
         promt = textwrap.dedent(f""" 
             - Lag en proffesjonell CV i latex format basert på JSON data.
             - Bruk informasjon som alder og erfaringer til å tilpasse CVen.
+            - Rydd opp i dataen, du kan omformulere og fjerne punkter som er irrelevante, forvirrende eller duplikater. 
+            - Resultatet skal være en ferdig CV leveringsklar til arbeidsgiver.
             - JSON data: {st.session_state.CV_dict}
             - Bruk denne latex malen: {LATEX_TEMPLATE}
             """)
@@ -949,7 +951,7 @@ if uploaded_cv is not None and not st.session_state.CV_uploaded:
 
 if user_message:
     # When the user posts a message...
-
+    st.session_state.user_message = user_message
     st.session_state.generate_CV_button_clicked = False
     # Streamlit's Markdown engine interprets "$" as LaTeX code (used to
     # display math). The line below fixes it.

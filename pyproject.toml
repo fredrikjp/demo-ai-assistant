@@ -15,4 +15,5 @@ dependencies = [
     "openai>=0.27.0",
     "pylatex>=1.4.1",
     "PyMuPDF>=1.26.0",
+    "python-docx>=0.8.11",
 ]

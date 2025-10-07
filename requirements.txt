@@ -1,1 +1,4 @@
 pymupdf>=1.22.0
+pip>=24.0
+setuptools>=70.0
+wheel>=0.42

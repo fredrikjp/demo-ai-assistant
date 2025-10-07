@@ -1,4 +1,4 @@
 pip>=24.0
 setuptools>=70.0
 wheel>=0.42
-pymupdf>=1.26.0
+pymupdf

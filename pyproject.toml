@@ -14,5 +14,5 @@ dependencies = [
     "streamlit>=1.49.0",
     "openai>=0.27.0",
     "pylatex>=1.4.1",
-    "pymupdf>=1.26.0",
+    "PyMuPDF>=1.26.0",
 ]

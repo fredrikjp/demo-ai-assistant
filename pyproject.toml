@@ -1,3 +1,5 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel>=0.42", "pip>=24.0"]
 [project]
 name = "ai-assistant"
 version = "0.1.0"

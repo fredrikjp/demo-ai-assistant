@@ -198,24 +198,26 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
         st.success("CV data lastet inn!")
 
         # Get next question from assistant
+        pdf_message_content = f"Bruker har lastet opp en CV med følgende informasjon: {cv_dict}. Bekreft at du har mottatt informasjonen og still et nytt spørsmål for å samle mer eller manglende informasjon"
+
         st.session_state.messages.append(
             {
                 "role": "pdf_uploaded",
-                "content": f"Bruker har lastet opp en CV med følgende informasjon: {cv_dict}. Bekreft at du har mottatt informasjonen og still et nytt spørsmål for å samle mer eller manglende informasjon",
+                "content": pdf_message_content,
             }
         )
-        user_message = st.session_state.messages[-1]["content"]
 
         with st.spinner("Analyserer CV..."):
             full_prompt = build_question_prompt(
                 st.session_state.messages,
-                st.session_state.messages[-1]["content"]
+                pdf_message_content
             )
             response_gen = get_response(client, full_prompt)
             response = generator_to_string(response_gen)
             st.session_state.messages.append({"role": "assistant", "content": response})
 
         st.session_state.CV_uploaded = True
+        st.rerun()
     else:
         st.error("Kunne ikke tolke CVen. Vennligst prøv en annen CV.")
 
@@ -223,6 +225,8 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
 if user_message:
     st.session_state.user_message = user_message
     st.session_state.generate_CV_button_clicked = False
+    # Clear CV generation trigger when user sends a message
+    st.session_state.trigger_cv_generation = False
 
     # Escape markdown special characters
     user_message = user_message.replace("$", r"\$")
@@ -281,10 +285,27 @@ if user_message:
                 "examples": examples
             })
 
-            # Show examples expander if available
-            if examples:
-                with st.expander("💡 Se eksempler", expanded=False):
-                    st.markdown(examples)
+            # Show examples expander and CV button if available
+            # Don't show during CV generation to prevent duplicate display
+            if not st.session_state.get("trigger_cv_generation", False):
+                if examples or (st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state):
+                    col1, col2 = st.columns([4, 1])
+
+                    with col1:
+                        if examples:
+                            with st.expander("💡 Se eksempler", expanded=False):
+                                st.markdown(examples)
+
+                    with col2:
+                        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                            def trigger_generation():
+                                st.session_state.trigger_cv_generation = True
+
+                            st.button(
+                                "📄 Generer CV",
+                                key=f"generate_cv_button_{len(st.session_state.messages)}",
+                                on_click=trigger_generation
+                            )
 
             # Extract JSON data if in CV mode
             if st.session_state.get("CV_mode", False) and len(st.session_state.messages) > 1:
@@ -312,25 +333,35 @@ if user_message:
 
                 save_json_str_to_dict(st.session_state, json_str)
 
-# Show CV generation button if CV data exists
-if "CV_dict" in st.session_state:
-    if st.button("📄 Generer CV", type="primary", use_container_width=True):
+# Handle CV generation trigger (after all chat processing, shows spinner below chat)
+if st.session_state.get("trigger_cv_generation", False):
+    st.session_state.trigger_cv_generation = False
+
+    # Verify CV_dict exists before generating
+    if "CV_dict" in st.session_state:
         with st.spinner("Genererer CV..."):
             json_to_cv_pdf(client, st.session_state.CV_dict)
             try:
                 with open("CV.pdf", "rb") as f:
                     st.session_state["CV_pdf"] = f.read()
-                st.success("CV generert! Last ned nedenfor.")
+                st.success("CV generert!")
+                st.session_state.generate_CV_button_clicked = True
             except FileNotFoundError as e:
                 st.error("PDF ikke funnet. Vennligst prøv å generere CVen på nytt.")
+    else:
+        st.error("Ingen CV data funnet. Vennligst samle inn data først.")
 
-# Download button (show if PDF exists)
-if "CV_pdf" in st.session_state:
+# Show download button if PDF exists and not currently processing a message
+# (placed below chat history, above chat_input)
+if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_clicked", False) and not user_message:
     st.download_button(
         type="primary",
-        label="📥 Last ned CV (PDF)",
+        label="📥 Last ned CV",
         data=st.session_state["CV_pdf"],
         file_name="CV.pdf",
         mime='application/pdf',
         use_container_width=True
     )
+
+
+

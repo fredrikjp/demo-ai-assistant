@@ -41,6 +41,11 @@ def deep_update(original, new_data):
                     original.append(v)
                 continue
 
+            # If original list is empty, just append the new item
+            if len(original) == 0:
+                original.append(v)
+                continue
+
             for key, value in v.items():
                 if key in original[-1] and original[-1][key] == "" or original[-1][key] == value:
                     original[-1] = deep_update(original[-1], v)

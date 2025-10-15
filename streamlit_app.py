@@ -281,13 +281,8 @@ if user_message:
     user_message = user_message.replace("$", r"\$")
 
     # Display user message
-    try:
-        if not st.session_state.messages[-2]["role"] == "pdf_uploaded":
-            with st.chat_message("user"):
-                st.text(user_message)
-    except:
-        with st.chat_message("user"):
-            st.text(user_message)
+    with st.chat_message("user"):
+        st.text(user_message)
 
     # Display assistant response
     with st.chat_message("assistant"):
@@ -320,19 +315,21 @@ if user_message:
         with st.container():
             response = st.write_stream(response_gen)
 
-            # Generate personalized examples after streaming
-            examples = None
-            if st.session_state.get("CV_mode", False):
-                user_data = st.session_state.get("CV_dict", {})
-                examples = generate_personalized_examples(client, response, user_data)
-
-            # Add to chat history
+            # Add to chat history immediately (matching bug-free pattern)
             st.session_state.messages.append({"role": "user", "content": user_message})
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response,
-                "examples": examples
+                "examples": None  # Will be added below
             })
+
+            # Generate personalized examples after adding to history
+            examples = None
+            if st.session_state.get("CV_mode", False):
+                user_data = st.session_state.get("CV_dict", {})
+                examples = generate_personalized_examples(client, response, user_data)
+                # Update the last message with examples
+                st.session_state.messages[-1]["examples"] = examples
 
             # Show examples expander and CV button if available
             # Don't show during CV generation to prevent duplicate display

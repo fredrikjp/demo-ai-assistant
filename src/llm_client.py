@@ -166,6 +166,7 @@ def generate_personalized_examples(client, question, user_data):
 
     prompt = f"""
 Du er en hjelpfull assistent som genererer personlige eksempler for CV-spørsmål.
+Du skal generere eksempler av informasjon assistenten spørr etter
 
 Spørsmål assistenten stilte: {question}
 

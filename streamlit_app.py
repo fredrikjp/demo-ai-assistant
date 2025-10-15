@@ -235,17 +235,38 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
             }
         )
 
-        with st.spinner("Analyserer CV..."):
-            full_prompt = build_question_prompt(
-                st.session_state.messages,
-                pdf_message_content
-            )
-            response_gen = get_response(client, full_prompt)
-            response = generator_to_string(response_gen)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+        # Generate and display assistant response with streaming
+        with st.chat_message("assistant"):
+            with st.spinner("Analyserer CV..."):
+                full_prompt = build_question_prompt(
+                    st.session_state.messages,
+                    pdf_message_content
+                )
+                response_gen = get_response(client, full_prompt)
+
+            # Stream the response
+            with st.container():
+                response = st.write_stream(response_gen)
+
+                # Generate personalized examples
+                examples = None
+                if st.session_state.get("CV_mode", False):
+                    user_data = st.session_state.get("CV_dict", {})
+                    examples = generate_personalized_examples(client, response, user_data)
+
+                # Add to chat history
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response,
+                    "examples": examples
+                })
+
+                # Show examples expander if available
+                if examples:
+                    with st.expander("💡 Se eksempler", expanded=False):
+                        st.markdown(examples)
 
         st.session_state.CV_uploaded = True
-        st.rerun()
     else:
         st.error("Kunne ikke tolke CVen. Vennligst prøv en annen CV.")
 

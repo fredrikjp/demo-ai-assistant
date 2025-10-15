@@ -39,6 +39,14 @@ from src.data_utils import (
     extract_personalia_from_json,
     extract_cv_from_pdf
 )
+from src.metrics import (
+    initialize_session_metrics,
+    log_event,
+    log_error,
+    track_first_user_input,
+    track_cv_generation_attempt,
+    get_session_duration
+)
 
 # Initialize OpenAI client
 client = get_openai_client(api_key=st.secrets["OPENAI_API_KEY"])
@@ -94,6 +102,16 @@ has_message_history = (
 if "prev_question_timestamp" not in st.session_state:
     st.session_state.prev_question_timestamp = datetime.datetime.fromtimestamp(0)
 
+# Initialize metrics tracking
+initialize_session_metrics()
+
+# Track entry source from query params
+if "entry_source_tracked" not in st.session_state:
+    source = st.query_params.get("source", "direct")
+    st.session_state.metrics["entry_source"] = source
+    st.session_state.entry_source_tracked = True
+    log_event("session_started", {"entry_source": source})
+
 # Show initial UI when no question asked yet
 if not user_first_interaction and not has_message_history:
     st.session_state.messages = []
@@ -127,9 +145,13 @@ if not user_message:
     if user_just_asked_initial_question:
         user_message = st.session_state.initial_question
         st.session_state.CV_mode = False
+        track_first_user_input()
+        log_event("initial_question_asked", {"question_length": len(user_message)})
     if user_just_clicked_suggestion:
         st.session_state.CV_mode = True
         st.session_state.CV_uploaded = False
+        track_first_user_input()
+        log_event("cv_mode_selected")
 
         # Initial question from the chatbot
         st.session_state.messages.append(
@@ -190,12 +212,18 @@ for i, message in enumerate(st.session_state.messages):
 
 # Handle PDF upload
 if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
+    log_event("cv_pdf_uploaded", {"file_name": uploaded_cv.name, "file_size": uploaded_cv.size})
     with st.spinner("Leser og tolker CV..."):
-        cv_dict = extract_cv_from_pdf(client, uploaded_cv)
+        try:
+            cv_dict = extract_cv_from_pdf(client, uploaded_cv)
+        except Exception as e:
+            log_error("cv_pdf_extraction_failed", str(e), {"file_name": uploaded_cv.name})
+            raise
 
     if cv_dict:
         st.session_state.CV_dict = cv_dict
         st.success("CV data lastet inn!")
+        log_event("cv_pdf_parsed_success")
 
         # Get next question from assistant
         pdf_message_content = f"Bruker har lastet opp en CV med følgende informasjon: {cv_dict}. Bekreft at du har mottatt informasjonen og still et nytt spørsmål for å samle mer eller manglende informasjon"
@@ -300,6 +328,7 @@ if user_message:
                         if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
                             def trigger_generation():
                                 st.session_state.trigger_cv_generation = True
+                                track_cv_generation_attempt()
 
                             st.button(
                                 "📄 Generer CV",
@@ -340,21 +369,30 @@ if st.session_state.get("trigger_cv_generation", False):
     # Verify CV_dict exists before generating
     if "CV_dict" in st.session_state:
         with st.spinner("Genererer CV..."):
-            json_to_cv_pdf(client, st.session_state.CV_dict)
             try:
+                json_to_cv_pdf(client, st.session_state.CV_dict)
                 with open("CV.pdf", "rb") as f:
                     st.session_state["CV_pdf"] = f.read()
                 st.success("CV generert!")
                 st.session_state.generate_CV_button_clicked = True
+                log_event("cv_generated_success", {
+                    "message_count": len(st.session_state.get("messages", [])),
+                    "session_duration": get_session_duration()
+                })
             except FileNotFoundError as e:
+                log_error("cv_generation_pdf_not_found", str(e))
                 st.error("PDF ikke funnet. Vennligst prøv å generere CVen på nytt.")
+            except Exception as e:
+                log_error("cv_generation_failed", str(e))
+                st.error(f"Feil under generering av CV: {str(e)}")
     else:
+        log_error("cv_generation_no_data", "CV_dict not in session state")
         st.error("Ingen CV data funnet. Vennligst samle inn data først.")
 
 # Show download button if PDF exists and not currently processing a message
 # (placed below chat history, above chat_input)
 if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_clicked", False) and not user_message:
-    st.download_button(
+    download_clicked = st.download_button(
         type="primary",
         label="📥 Last ned CV",
         data=st.session_state["CV_pdf"],
@@ -362,6 +400,11 @@ if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_cli
         mime='application/pdf',
         use_container_width=True
     )
+    if download_clicked:
+        log_event("cv_downloaded", {
+            "session_duration": get_session_duration(),
+            "message_count": len(st.session_state.get("messages", []))
+        })
 
 
 

@@ -59,9 +59,15 @@ demo-ai-assistant/
    pip install -e .
    ```
 
-3. Configure your OpenAI API key in `.streamlit/secrets.toml`:
+3. Configure your API keys in `.streamlit/secrets.toml`:
    ```toml
    OPENAI_API_KEY = "your-openai-api-key-here"
+
+   # Optional: Metrics and analytics (for production)
+   SUPABASE_URL = "your-supabase-project-url"
+   SUPABASE_KEY = "your-supabase-anon-key"
+   POSTHOG_KEY = "your-posthog-api-key"
+   POSTHOG_HOST = "https://app.posthog.com"  # Optional, defaults to this
    ```
 
 4. Run the application:
@@ -104,6 +110,65 @@ Enable debug mode to see the prompts being sent to the LLM:
 ```
 http://localhost:8501/?debug=true
 ```
+
+### Metrics and Analytics
+
+The application includes comprehensive metrics tracking for monitoring user behavior and application performance. Metrics are optional and require Supabase and PostHog configuration.
+
+**Tracked Metrics:**
+- **Time to Complete**: Time from first user input to each CV generation click
+- **Completion Rate**: Percentage of users who complete CV generation by entry source and device
+- **Session Metrics**: Session duration, message count, and interaction patterns
+- **AI Quality Scoring**: Automated CV quality assessment on 5 dimensions:
+  - Structure (0-5): Organization and formatting
+  - Clarity (0-5): Readability and comprehension
+  - Grammar (0-5): Language quality
+  - Relevance (0-5): Job search relevance
+  - Impact (0-5): Achievement presentation
+  - Total weighted score (0-100) with quality levels
+- **Event Stream**: All user interactions (clicks, uploads, downloads)
+- **Error Tracking**: Server and client errors with context
+
+**Setting up Metrics:**
+
+1. **Supabase Setup** (Free tier available):
+   - Create a project at [supabase.com](https://supabase.com)
+   - Create a `sessions` table with the following schema:
+   ```sql
+   CREATE TABLE sessions (
+     id BIGSERIAL PRIMARY KEY,
+     session_id UUID NOT NULL,
+     session_start TIMESTAMP NOT NULL,
+     session_duration FLOAT,
+     first_user_input TIMESTAMP,
+     cv_generated BOOLEAN,
+     cv_downloaded BOOLEAN,
+     generation_attempts INT,
+     message_count INT,
+     total_tokens INT,
+     errors_count INT,
+     device_type TEXT,
+     entry_source TEXT,
+     events JSONB,
+     errors JSONB,
+     completion_times JSONB,
+     created_at TIMESTAMP DEFAULT NOW()
+   );
+   ```
+   - Add your Supabase URL and anon key to `.streamlit/secrets.toml`
+
+2. **PostHog Setup** (Free tier available):
+   - Create an account at [posthog.com](https://posthog.com)
+   - Get your project API key
+   - Add your PostHog key to `.streamlit/secrets.toml`
+
+3. **Entry Source Tracking**:
+   Track where users come from by adding `?source=yourname` to your URL:
+   ```
+   http://localhost:8501/?source=skool
+   ```
+
+**Note**: Metrics are optional. The application works without Supabase/PostHog configuration, but metrics won't be persisted.
 
 ### Customization
 

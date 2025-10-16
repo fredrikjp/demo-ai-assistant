@@ -246,8 +246,8 @@ for i, message in enumerate(st.session_state.messages):
                 with st.expander("💡 Se forslag", expanded=False):
                     st.markdown(message["suggestions"])
 
-# Show draft message preview if pills are selected
-if st.session_state.selected_pill_suggestions:
+# Show draft message preview if pills are selected (but not when sending)
+if st.session_state.selected_pill_suggestions and user_message is None:
     with st.chat_message("user"):
         draft_text = "\n".join(st.session_state.selected_pill_suggestions)
         st.markdown(draft_text)

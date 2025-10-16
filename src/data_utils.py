@@ -102,6 +102,30 @@ def extract_personalia_from_json(json_str):
     return name, dob
 
 
+def parse_examples_to_list(examples_markdown):
+    """Parse markdown bullet points into a list of example strings.
+
+    Args:
+        examples_markdown: String containing markdown bullet points (e.g., "- Item 1\n- Item 2")
+
+    Returns:
+        list: List of example strings without the "- " prefix
+    """
+    if not examples_markdown:
+        return []
+
+    lines = examples_markdown.strip().split('\n')
+    examples = []
+    for line in lines:
+        line = line.strip()
+        if line.startswith('- '):
+            examples.append(line[2:].strip())
+        elif line.startswith('* '):
+            examples.append(line[2:].strip())
+
+    return examples
+
+
 def extract_cv_from_pdf(client, uploaded_file):
     """Extract CV data from uploaded PDF file.
 

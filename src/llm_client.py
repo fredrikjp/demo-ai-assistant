@@ -150,9 +150,9 @@ def generator_to_string(gen):
     return "".join(chunk for chunk in gen if isinstance(chunk, str))
 
 
-def generate_personalized_examples(client, question, user_data):
+def generate_adaptive_suggestions(client, question, user_data):
     """
-    Generate personalized examples based on the question and user's previous data.
+    Generate context-aware suggestions based on question type and user's CV data.
 
     Args:
         client: OpenAI client instance
@@ -160,51 +160,68 @@ def generate_personalized_examples(client, question, user_data):
         user_data: Dictionary containing user's CV data so far
 
     Returns:
-        str: Personalized examples in markdown format, or None if no examples needed
+        str: Adaptive suggestions in markdown format, or None if no suggestions needed
     """
     import json
 
     prompt = f"""
-Du er en hjelpfull assistent som genererer personlige eksempler for CV-spørsmål.
-Du skal generere eksempler av informasjon assistenten spørr etter
+Du er en intelligent CV-assistent som tilpasser forslag basert på spørsmålstype og brukerens profil.
 
 Spørsmål assistenten stilte: {question}
 
-Brukerens informasjon så langt:
+Brukerens CV-data så langt:
 {json.dumps(user_data, ensure_ascii=False, indent=2)}
 
-Basert på spørsmålet og brukerens tidligere svar, generer 2-3 konkrete, relevante eksempler som passer brukerens profil (alder, erfaring, utdanningsnivå etc.).
+Analyser spørsmålet og generer passende forslag basert på disse retningslinjene:
 
-Regler:
-- Eksemplene skal være KORTE og KONSISE (1-2 linjer hver)
-- Tilpass eksemplene til brukerens situasjon (f.eks. hvis de er ung, gi junior-relaterte eksempler)
-- Bruk markdown format med bullet points
-- Hvis spørsmålet ikke krever eksempler (f.eks. "ja/nei" spørsmål), returner "NONE"
-- Kun returner eksemplene, ingen forklaring
+**TYPE 1 - Spesifikk informasjon (e-post, telefon, adresse, fødselsdato etc.):**
+- Generer KUN 1 komplett eksempel som mal
+- Eksempel: 
+    * "navn@outlook.com"
+    * "+47 923 45 678"
+    * "gate 23, 0846 Oslo"
 
-Eksempel output:
-- Software Engineer, TechCorp (2020-2023) - Utviklet webapplikasjoner med Python og React
-- Junior Developer, StartupAS (2018-2020) - Jobbet med backend-utvikling
+**TYPE 2 - Erfaringer/Utdanning (jobberfaring, utdanning, dugnadsarbeid):**
+- Generer 2-4 veiledende eksempler som maler
+- Tilpass til brukerens alder og erfaring (ung = junior/student-eksempler)
+- Hver linje skal være et komplett, konkret eksempel
+- Eksempel: "- Butikkmedarbeider, Coop Extra (2022-2023) - Kundeservice og kassearbeid"
+
+**TYPE 3 - Forslag basert på tidligere data (ferdigheter, interesser, jobbønsker):**
+- Analyser brukerens utdanning og erfaring
+- Generer passende CV mengde, personlige forslag som faktisk passer deres profil
+- Hvis de har jobbet i butikk -> foreslå kundeservice-ferdigheter
+- Eksempel: "- Kommunikasjon og kundeservice\n- Samarbeid i team\n- Microsoft Office"
+
+**Viktige regler:**
+- Bruk ALLTID bullet points (-)
+- Være KORT og KONSIST (1-2 linjer per punkt)
+- Returner "NONE" hvis spørsmålet ikke trenger forslag (ja/nei spørsmål)
+- KUN returner forslagene, ingen forklaring eller overskrift
+- Tilpass språknivå og eksempler til brukerens situasjon
+- Produser alltid mest sannsynlig forslag for brukeren
+
+Kun returner forslagslisten.
 """
 
     try:
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "You are a helpful CV example generator."},
+                {"role": "system", "content": "You are an intelligent CV suggestion assistant that adapts to question context."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
         )
 
-        examples = response.choices[0].message.content.strip()
+        suggestions = response.choices[0].message.content.strip()
 
-        # Don't return examples if the LLM says they're not needed
-        if examples.upper() == "NONE" or len(examples) < 10:
+        # Don't return suggestions if the LLM says they're not needed
+        if suggestions.upper() == "NONE" or len(suggestions) < 10:
             return None
 
-        return examples
+        return suggestions
 
     except Exception as e:
-        print(f"Error generating examples: {e}")
+        print(f"Error generating suggestions: {e}")
         return None

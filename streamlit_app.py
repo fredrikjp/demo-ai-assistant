@@ -31,13 +31,14 @@ from src.llm_client import (
     build_question_prompt,
     get_response,
     generator_to_string,
-    generate_personalized_examples
+    generate_adaptive_suggestions
 )
 from src.cv_generator import json_to_cv_pdf, generate_word_docx
 from src.data_utils import (
     save_json_str_to_dict,
     extract_personalia_from_json,
-    extract_cv_from_pdf
+    extract_cv_from_pdf,
+    parse_examples_to_list
 )
 from src.metrics import (
     initialize_session_metrics,
@@ -104,6 +105,10 @@ if "prev_question_timestamp" not in st.session_state:
 
 # Initialize metrics tracking
 initialize_session_metrics()
+
+# Initialize pill selection tracking
+if "selected_pill_suggestions" not in st.session_state:
+    st.session_state.selected_pill_suggestions = []
 
 # Track entry source from query params
 if "entry_source_tracked" not in st.session_state:
@@ -205,10 +210,17 @@ for i, message in enumerate(st.session_state.messages):
 
         st.markdown(message["content"])
 
-        # Show examples expander for historical messages if available
-        if message["role"] == "assistant" and message.get("examples"):
-            with st.expander("💡 Se eksempler", expanded=False):
-                st.markdown(message["examples"])
+        # Show suggestions for assistant messages (pills are shown inline when created)
+        if message["role"] == "assistant" and message.get("suggestions"):
+            with st.expander("💡 Se forslag", expanded=False):
+                st.markdown(message["suggestions"])
+
+# Show draft message preview if pills are selected
+if st.session_state.selected_pill_suggestions:
+    with st.chat_message("user"):
+        draft_text = "\n".join(st.session_state.selected_pill_suggestions)
+        st.markdown(draft_text)
+        st.caption("👆 Utkast fra valgte forslag (ikke sendt ennå)")
 
 # Handle PDF upload
 if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
@@ -248,30 +260,60 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
             with st.container():
                 response = st.write_stream(response_gen)
 
-                # Generate personalized examples
-                examples = None
+                # Generate adaptive suggestions
+                suggestions = None
                 if st.session_state.get("CV_mode", False):
                     user_data = st.session_state.get("CV_dict", {})
-                    examples = generate_personalized_examples(client, response, user_data)
+                    suggestions = generate_adaptive_suggestions(client, response, user_data)
 
                 # Add to chat history
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": response,
-                    "examples": examples
+                    "suggestions": suggestions
                 })
 
-                # Show examples expander if available
-                if examples:
-                    with st.expander("💡 Se eksempler", expanded=False):
-                        st.markdown(examples)
+                # Show pills and CV button on same line
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    if suggestions:
+                        suggestion_items = parse_examples_to_list(suggestions)
+                        if suggestion_items:
+                            with st.expander("💡 Klikk for å velge forslag", expanded=False):
+                                st.session_state.selected_pill_suggestions = st.pills(
+                                    label="Velg forslag (kan velge flere)",
+                                    options=suggestion_items,
+                                    selection_mode="multi",
+                                    key=f"pills_pdf_{len(st.session_state.messages)}",
+                                    default=st.session_state.selected_pill_suggestions
+                                ) or []
+
+                with col2:
+                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                        def trigger_generation_pdf():
+                            st.session_state.trigger_cv_generation = True
+                            track_cv_generation_attempt()
+
+                        st.button(
+                            "📄 Generer CV",
+                            key=f"generate_cv_button_pdf_{len(st.session_state.messages)}",
+                            on_click=trigger_generation_pdf
+                        )
 
         st.session_state.CV_uploaded = True
     else:
         st.error("Kunne ikke tolke CVen. Vennligst prøv en annen CV.")
 
-# Handle user message
-if user_message:
+# Handle user message (or pill selections)
+# user_message is None if not submitted, "" if submitted empty, or "text" if submitted with text
+if user_message is not None:
+    # Combine pill selections with user input
+    if st.session_state.selected_pill_suggestions:
+        pill_text = "\n".join(st.session_state.selected_pill_suggestions)
+        user_message = pill_text + ("\n" + user_message if user_message else "")
+        st.session_state.selected_pill_suggestions = []  # Clear after combining
+
     st.session_state.user_message = user_message
     st.session_state.generate_CV_button_clicked = False
     # Clear CV generation trigger when user sends a message
@@ -320,39 +362,46 @@ if user_message:
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response,
-                "examples": None  # Will be added below
+                "suggestions": None  # Will be added below
             })
 
-            # Generate personalized examples after adding to history
-            examples = None
+            # Generate adaptive suggestions after adding to history
+            suggestions = None
             if st.session_state.get("CV_mode", False):
                 user_data = st.session_state.get("CV_dict", {})
-                examples = generate_personalized_examples(client, response, user_data)
-                # Update the last message with examples
-                st.session_state.messages[-1]["examples"] = examples
+                suggestions = generate_adaptive_suggestions(client, response, user_data)
+                # Update the last message with suggestions
+                st.session_state.messages[-1]["suggestions"] = suggestions
 
-            # Show examples expander and CV button if available
+            # Show pills and CV button on same line
             # Don't show during CV generation to prevent duplicate display
             if not st.session_state.get("trigger_cv_generation", False):
-                if examples or (st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state):
-                    col1, col2 = st.columns([4, 1])
+                col1, col2 = st.columns([4, 1])
 
-                    with col1:
-                        if examples:
-                            with st.expander("💡 Se eksempler", expanded=False):
-                                st.markdown(examples)
+                with col1:
+                    if suggestions:
+                        suggestion_items = parse_examples_to_list(suggestions)
+                        if suggestion_items:
+                            with st.expander("💡 Klikk for å velge forslag", expanded=False):
+                                st.session_state.selected_pill_suggestions = st.pills(
+                                    label="Velg forslag (kan velge flere)",
+                                    options=suggestion_items,
+                                    selection_mode="multi",
+                                    key=f"pills_user_{len(st.session_state.messages)}",
+                                    default=st.session_state.selected_pill_suggestions
+                                ) or []
 
-                    with col2:
-                        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-                            def trigger_generation():
-                                st.session_state.trigger_cv_generation = True
-                                track_cv_generation_attempt()
+                with col2:
+                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                        def trigger_generation():
+                            st.session_state.trigger_cv_generation = True
+                            track_cv_generation_attempt()
 
-                            st.button(
-                                "📄 Generer CV",
-                                key=f"generate_cv_button_{len(st.session_state.messages)}",
-                                on_click=trigger_generation
-                            )
+                        st.button(
+                            "📄 Generer CV",
+                            key=f"generate_cv_button_{len(st.session_state.messages)}",
+                            on_click=trigger_generation
+                        )
 
             # Extract JSON data if in CV mode
             if st.session_state.get("CV_mode", False) and len(st.session_state.messages) > 1:

@@ -210,10 +210,41 @@ for i, message in enumerate(st.session_state.messages):
 
         st.markdown(message["content"])
 
-        # Show suggestions for assistant messages (pills are shown inline when created)
+        # Show suggestions for assistant messages
         if message["role"] == "assistant" and message.get("suggestions"):
-            with st.expander("💡 Se forslag", expanded=False):
-                st.markdown(message["suggestions"])
+            is_last_message = (i == len(st.session_state.messages) - 1)
+
+            if is_last_message:
+                # Show pills and button on same line for the most recent message
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    suggestion_items = parse_examples_to_list(message["suggestions"])
+                    if suggestion_items:
+                        with st.expander("💡 Klikk for å velge forslag", expanded=False):
+                            st.session_state.selected_pill_suggestions = st.pills(
+                                label="Velg forslag (kan velge flere)",
+                                options=suggestion_items,
+                                selection_mode="multi",
+                                key=f"pills_history_{i}",
+                                default=st.session_state.selected_pill_suggestions
+                            ) or []
+
+                with col2:
+                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                        def trigger_generation_history():
+                            st.session_state.trigger_cv_generation = True
+                            track_cv_generation_attempt()
+
+                        st.button(
+                            "📄 Generer CV",
+                            key=f"generate_cv_button_history_{i}",
+                            on_click=trigger_generation_history
+                        )
+            else:
+                # Show markdown for historical messages
+                with st.expander("💡 Se forslag", expanded=False):
+                    st.markdown(message["suggestions"])
 
 # Show draft message preview if pills are selected
 if st.session_state.selected_pill_suggestions:

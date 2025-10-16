@@ -20,34 +20,44 @@ import streamlit as st
 from htbuilder.units import rem
 from htbuilder import div, styles
 
-# Import from our modules
-from src.config import (
-    SUGGESTIONS,
-    MIN_TIME_BETWEEN_REQUESTS,
-    CV_SCHEMA
-)
+# Import configuration
+from src.config import SUGGESTIONS, MIN_TIME_BETWEEN_REQUESTS
+
+# Import LLM functions
 from src.llm_client import (
     get_openai_client,
     build_question_prompt,
     get_response,
-    generator_to_string,
     generate_adaptive_suggestions
 )
-from src.cv_generator import json_to_cv_pdf, generate_word_docx
-from src.data_utils import (
-    save_json_str_to_dict,
-    extract_personalia_from_json,
-    extract_cv_from_pdf,
-    parse_examples_to_list
-)
+
+# Import data functions
+from src.cv_generator import json_to_cv_pdf
+from src.data_utils import extract_cv_from_pdf
+
+# Import metrics
 from src.metrics import (
-    initialize_session_metrics,
     log_event,
     log_error,
     track_first_user_input,
-    track_cv_generation_attempt,
     get_session_duration
 )
+
+# Import UI and session helpers
+from src.ui_helpers import (
+    display_suggestions_and_cv_button,
+    display_draft_preview,
+    stream_initial_message,
+    combine_pills_with_user_input
+)
+from src.session_helpers import (
+    initialize_app_session_state,
+    extract_and_save_json_data
+)
+
+# -----------------------------------------------------------------------------
+# App Initialization
+# -----------------------------------------------------------------------------
 
 # Initialize OpenAI client
 client = get_openai_client(api_key=st.secrets["OPENAI_API_KEY"])
@@ -58,6 +68,13 @@ st.set_page_config(page_title="Ungt Steg AI Assistent", page_icon="✨")
 # Debug mode
 DEBUG_MODE = st.query_params.get("debug", "false").lower() == "true"
 
+# Initialize session state
+initialize_app_session_state()
+
+
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
 
 def show_disclaimer_dialog():
     """Show legal disclaimer dialog."""
@@ -72,52 +89,37 @@ def show_disclaimer_dialog():
     """)
 
 
+def clear_conversation():
+    """Reset conversation state."""
+    st.session_state.messages = []
+    st.session_state.initial_question = None
+    st.session_state.selected_suggestion = None
+
+
+def check_user_interaction():
+    """Check user interaction state for initial UI."""
+    user_just_asked = "initial_question" in st.session_state and st.session_state.initial_question
+    user_clicked_suggestion = "selected_suggestion" in st.session_state and st.session_state.selected_suggestion
+    user_first_interaction = user_just_asked or user_clicked_suggestion
+    has_history = "messages" in st.session_state and len(st.session_state.messages) > 0
+
+    return user_just_asked, user_clicked_suggestion, user_first_interaction, has_history
+
+
 # -----------------------------------------------------------------------------
 # UI Setup
+# -----------------------------------------------------------------------------
 
 st.html(div(style=styles(font_size=rem(5), line_height=1))["❉"])
 
 title_row = st.container(horizontal=True, vertical_alignment="bottom")
-
 with title_row:
     st.title("Ungt Steg AI assistent", anchor=False, width="stretch")
 
 # Check user interaction state
-user_just_asked_initial_question = (
-    "initial_question" in st.session_state and st.session_state.initial_question
-)
+user_just_asked_initial_question, user_just_clicked_suggestion, user_first_interaction, has_message_history = check_user_interaction()
 
-user_just_clicked_suggestion = (
-    "selected_suggestion" in st.session_state and st.session_state.selected_suggestion
-)
-
-user_first_interaction = (
-    user_just_asked_initial_question or user_just_clicked_suggestion
-)
-
-has_message_history = (
-    "messages" in st.session_state and len(st.session_state.messages) > 0
-)
-
-# Initialize session state
-if "prev_question_timestamp" not in st.session_state:
-    st.session_state.prev_question_timestamp = datetime.datetime.fromtimestamp(0)
-
-# Initialize metrics tracking
-initialize_session_metrics()
-
-# Initialize pill selection tracking
-if "selected_pill_suggestions" not in st.session_state:
-    st.session_state.selected_pill_suggestions = []
-
-# Track entry source from query params
-if "entry_source_tracked" not in st.session_state:
-    source = st.query_params.get("source", "direct")
-    st.session_state.metrics["entry_source"] = source
-    st.session_state.entry_source_tracked = True
-    log_event("session_started", {"entry_source": source})
-
-# Show initial UI when no question asked yet
+# Show initial UI when no interaction yet
 if not user_first_interaction and not has_message_history:
     st.session_state.messages = []
     st.session_state.is_pdf_ready = False
@@ -125,8 +127,7 @@ if not user_first_interaction and not has_message_history:
 
     with st.container():
         st.chat_input("Ask a question...", key="initial_question")
-
-        selected_suggestion = st.pills(
+        st.pills(
             label="Examples",
             label_visibility="collapsed",
             options=SUGGESTIONS.keys(),
@@ -138,11 +139,13 @@ if not user_first_interaction and not has_message_history:
         type="tertiary",
         on_click=show_disclaimer_dialog,
     )
-
     st.stop()
 
-# Show chat input at bottom
+# Show chat input and restart button
 user_message = st.chat_input("Ask a follow-up...")
+
+with title_row:
+    st.button("Restart", icon=":material/refresh:", on_click=clear_conversation)
 
 # Handle initial interaction
 if not user_message:
@@ -152,44 +155,37 @@ if not user_message:
         st.session_state.CV_mode = False
         track_first_user_input()
         log_event("initial_question_asked", {"question_length": len(user_message)})
+
     if user_just_clicked_suggestion:
         st.session_state.CV_mode = True
         st.session_state.CV_uploaded = False
         track_first_user_input()
         log_event("cv_mode_selected")
-
-        # Initial question from the chatbot
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": (
-                    "Hei! Jeg er her for å hjelpe deg med å lage en CV. "
-                    "For å komme i gang, last opp din CV (pdf) eller skriv ditt fulle navn og fødselsdato (DD.MM.ÅÅ)"
-                ),
-            }
-        )
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "Hei! Jeg er her for å hjelpe deg med å lage en CV. "
+                "For å komme i gang, last opp din CV (pdf) eller skriv ditt fulle navn og fødselsdato (DD.MM.ÅÅ)"
+            ),
+        })
         st.session_state.initial_CV_questions = True
-
-# Add restart button
-with title_row:
-    def clear_conversation():
-        st.session_state.messages = []
-        st.session_state.initial_question = None
-        st.session_state.selected_suggestion = None
-
-    st.button(
-        "Restart",
-        icon=":material/refresh:",
-        on_click=clear_conversation,
-    )
 
 # PDF uploader
 uploaded_cv = st.file_uploader("Last opp eksisterende CV (pdf)", type=["pdf"])
-
 if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
     st.session_state.messages = []
 
-# Display chat history
+
+# -----------------------------------------------------------------------------
+# Display Chat History
+# -----------------------------------------------------------------------------
+
+# Check if we're about to create a new message inline
+creating_new_message = (
+    (uploaded_cv is not None and not st.session_state.get("CV_uploaded", False)) or
+    (user_message is not None)
+)
+
 for i, message in enumerate(st.session_state.messages):
     if message["role"] == "pdf_uploaded":
         continue
@@ -198,64 +194,33 @@ for i, message in enumerate(st.session_state.messages):
         if message["role"] == "assistant":
             st.container()  # Fix ghost message bug
 
+        # Stream initial message
         if not st.session_state.initial_stream_done:
-            def generator_initial_question(text, delay=0.01):
-                for ch in text:
-                    yield ch
-                    time.sleep(delay)
-                st.session_state.initial_stream_done = True
-
-            response = st.write_stream(generator_initial_question(st.session_state.messages[-1]["content"]))
+            st.write_stream(stream_initial_message(st.session_state.messages[-1]["content"]))
             continue
 
         st.markdown(message["content"])
 
-        # Show suggestions for assistant messages
+        # Show suggestions only for the most recent assistant message
+        # Don't show if we're about to create a new message inline (to avoid duplication)
         if message["role"] == "assistant" and message.get("suggestions"):
             is_last_message = (i == len(st.session_state.messages) - 1)
+            if is_last_message and not creating_new_message:
+                display_suggestions_and_cv_button(message["suggestions"], f"history_{i}")
 
-            if is_last_message:
-                # Show pills and button on same line for the most recent message
-                col1, col2 = st.columns([4, 1])
 
-                with col1:
-                    suggestion_items = parse_examples_to_list(message["suggestions"])
-                    if suggestion_items:
-                        with st.expander("💡 Klikk for å velge forslag", expanded=False):
-                            st.session_state.selected_pill_suggestions = st.pills(
-                                label="Velg forslag (kan velge flere)",
-                                options=suggestion_items,
-                                selection_mode="multi",
-                                key=f"pills_history_{i}",
-                                default=st.session_state.selected_pill_suggestions
-                            ) or []
+# Show draft message preview (only when not sending)
+if user_message is None:
+    display_draft_preview()
 
-                with col2:
-                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-                        def trigger_generation_history():
-                            st.session_state.trigger_cv_generation = True
-                            track_cv_generation_attempt()
 
-                        st.button(
-                            "📄 Generer CV",
-                            key=f"generate_cv_button_history_{i}",
-                            on_click=trigger_generation_history
-                        )
-            else:
-                # Show markdown for historical messages
-                with st.expander("💡 Se forslag", expanded=False):
-                    st.markdown(message["suggestions"])
+# -----------------------------------------------------------------------------
+# Handle PDF Upload
+# -----------------------------------------------------------------------------
 
-# Show draft message preview if pills are selected (but not when sending)
-if st.session_state.selected_pill_suggestions and user_message is None:
-    with st.chat_message("user"):
-        draft_text = "\n".join(st.session_state.selected_pill_suggestions)
-        st.markdown(draft_text)
-        st.caption("👆 Utkast fra valgte forslag (ikke sendt ennå)")
-
-# Handle PDF upload
 if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
     log_event("cv_pdf_uploaded", {"file_name": uploaded_cv.name, "file_size": uploaded_cv.size})
+
     with st.spinner("Leser og tolker CV..."):
         try:
             cv_dict = extract_cv_from_pdf(client, uploaded_cv)
@@ -268,86 +233,48 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
         st.success("CV data lastet inn!")
         log_event("cv_pdf_parsed_success")
 
-        # Get next question from assistant
+        # Prepare message for assistant
         pdf_message_content = f"Bruker har lastet opp en CV med følgende informasjon: {cv_dict}. Bekreft at du har mottatt informasjonen og still et nytt spørsmål for å samle mer eller manglende informasjon"
+        st.session_state.messages.append({"role": "pdf_uploaded", "content": pdf_message_content})
 
-        st.session_state.messages.append(
-            {
-                "role": "pdf_uploaded",
-                "content": pdf_message_content,
-            }
-        )
-
-        # Generate and display assistant response with streaming
+        # Generate assistant response
         with st.chat_message("assistant"):
             with st.spinner("Analyserer CV..."):
-                full_prompt = build_question_prompt(
-                    st.session_state.messages,
-                    pdf_message_content
-                )
+                full_prompt = build_question_prompt(st.session_state.messages, pdf_message_content)
                 response_gen = get_response(client, full_prompt)
 
-            # Stream the response
-            with st.container():
-                response = st.write_stream(response_gen)
+            response = st.write_stream(response_gen)
 
-                # Generate adaptive suggestions
-                suggestions = None
-                if st.session_state.get("CV_mode", False):
-                    user_data = st.session_state.get("CV_dict", {})
-                    suggestions = generate_adaptive_suggestions(client, response, user_data)
+            # Generate suggestions
+            suggestions = None
+            if st.session_state.get("CV_mode", False):
+                user_data = st.session_state.get("CV_dict", {})
+                suggestions = generate_adaptive_suggestions(client, response, user_data)
 
-                # Add to chat history
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response,
-                    "suggestions": suggestions
-                })
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response,
+                "suggestions": suggestions
+            })
 
-                # Show pills and CV button on same line
-                col1, col2 = st.columns([4, 1])
-
-                with col1:
-                    if suggestions:
-                        suggestion_items = parse_examples_to_list(suggestions)
-                        if suggestion_items:
-                            with st.expander("💡 Klikk for å velge forslag", expanded=False):
-                                st.session_state.selected_pill_suggestions = st.pills(
-                                    label="Velg forslag (kan velge flere)",
-                                    options=suggestion_items,
-                                    selection_mode="multi",
-                                    key=f"pills_pdf_{len(st.session_state.messages)}",
-                                    default=st.session_state.selected_pill_suggestions
-                                ) or []
-
-                with col2:
-                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-                        def trigger_generation_pdf():
-                            st.session_state.trigger_cv_generation = True
-                            track_cv_generation_attempt()
-
-                        st.button(
-                            "📄 Generer CV",
-                            key=f"generate_cv_button_pdf_{len(st.session_state.messages)}",
-                            on_click=trigger_generation_pdf
-                        )
+            # Display suggestions and CV button
+            display_suggestions_and_cv_button(suggestions, f"pdf_{len(st.session_state.messages)}")
 
         st.session_state.CV_uploaded = True
     else:
         st.error("Kunne ikke tolke CVen. Vennligst prøv en annen CV.")
 
-# Handle user message (or pill selections)
-# user_message is None if not submitted, "" if submitted empty, or "text" if submitted with text
+
+# -----------------------------------------------------------------------------
+# Handle User Message
+# -----------------------------------------------------------------------------
+
 if user_message is not None:
     # Combine pill selections with user input
-    if st.session_state.selected_pill_suggestions:
-        pill_text = "\n".join(st.session_state.selected_pill_suggestions)
-        user_message = pill_text + ("\n" + user_message if user_message else "")
-        st.session_state.selected_pill_suggestions = []  # Clear after combining
+    user_message = combine_pills_with_user_input(user_message)
 
     st.session_state.user_message = user_message
     st.session_state.generate_CV_button_clicked = False
-    # Clear CV generation trigger when user sends a message
     st.session_state.trigger_cv_generation = False
 
     # Escape markdown special characters
@@ -359,8 +286,8 @@ if user_message is not None:
 
     # Display assistant response
     with st.chat_message("assistant"):
+        # Rate limiting
         with st.spinner("Waiting..."):
-            # Rate limiting
             question_timestamp = datetime.datetime.now()
             time_diff = question_timestamp - st.session_state.prev_question_timestamp
             st.session_state.prev_question_timestamp = question_timestamp
@@ -380,91 +307,42 @@ if user_message is not None:
             with st.spinner("Researching..."):
                 full_prompt = build_question_prompt(st.session_state.messages, user_message)
 
-        # Get LLM response
+        # Get and stream LLM response
         with st.spinner("Thinking..."):
             response_gen = get_response(client, full_prompt)
 
-        # Stream response
-        with st.container():
-            response = st.write_stream(response_gen)
+        response = st.write_stream(response_gen)
 
-            # Add to chat history immediately (matching bug-free pattern)
-            st.session_state.messages.append({"role": "user", "content": user_message})
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response,
-                "suggestions": None  # Will be added below
-            })
+        # Add to chat history
+        st.session_state.messages.append({"role": "user", "content": user_message})
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response,
+            "suggestions": None
+        })
 
-            # Generate adaptive suggestions after adding to history
-            suggestions = None
-            if st.session_state.get("CV_mode", False):
-                user_data = st.session_state.get("CV_dict", {})
-                suggestions = generate_adaptive_suggestions(client, response, user_data)
-                # Update the last message with suggestions
-                st.session_state.messages[-1]["suggestions"] = suggestions
+        # Generate suggestions
+        suggestions = None
+        if st.session_state.get("CV_mode", False):
+            user_data = st.session_state.get("CV_dict", {})
+            suggestions = generate_adaptive_suggestions(client, response, user_data)
+            st.session_state.messages[-1]["suggestions"] = suggestions
 
-            # Show pills and CV button on same line
-            # Don't show during CV generation to prevent duplicate display
-            if not st.session_state.get("trigger_cv_generation", False):
-                col1, col2 = st.columns([4, 1])
+        # Display suggestions and CV button
+        if not st.session_state.get("trigger_cv_generation", False):
+            display_suggestions_and_cv_button(suggestions, f"user_{len(st.session_state.messages)}")
 
-                with col1:
-                    if suggestions:
-                        suggestion_items = parse_examples_to_list(suggestions)
-                        if suggestion_items:
-                            with st.expander("💡 Klikk for å velge forslag", expanded=False):
-                                st.session_state.selected_pill_suggestions = st.pills(
-                                    label="Velg forslag (kan velge flere)",
-                                    options=suggestion_items,
-                                    selection_mode="multi",
-                                    key=f"pills_user_{len(st.session_state.messages)}",
-                                    default=st.session_state.selected_pill_suggestions
-                                ) or []
+        # Extract JSON data from conversation
+        extract_and_save_json_data(client)
 
-                with col2:
-                    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-                        def trigger_generation():
-                            st.session_state.trigger_cv_generation = True
-                            track_cv_generation_attempt()
 
-                        st.button(
-                            "📄 Generer CV",
-                            key=f"generate_cv_button_{len(st.session_state.messages)}",
-                            on_click=trigger_generation
-                        )
+# -----------------------------------------------------------------------------
+# Handle CV Generation
+# -----------------------------------------------------------------------------
 
-            # Extract JSON data if in CV mode
-            if st.session_state.get("CV_mode", False) and len(st.session_state.messages) > 1:
-                assistant_question = st.session_state.messages[-3]["content"]
-                user_answer = st.session_state.messages[-2]["content"]
-
-                json_prompt = build_question_prompt(
-                    st.session_state.messages,
-                    f"Spørsmål: {assistant_question}\nSvar: {user_answer}",
-                    json_generator=True
-                )
-                json_response_gen = get_response(client, json_prompt)
-                json_str = generator_to_string(json_response_gen)
-
-                # Save personalia on initial questions
-                if st.session_state.get("initial_CV_questions", False) and not st.session_state.get("CV_uploaded", False):
-                    try:
-                        name, dob = extract_personalia_from_json(json_str)
-                        st.session_state.personalia_name = name
-                        st.session_state.personalia_dob = dob
-                        st.session_state.initial_CV_questions = False
-                    except:
-                        st.write("\nKunne ikke hente personalia. Vennligst skriv inn navn og fødselsdato (DD.MM.ÅÅ) på nytt.")
-                        st.session_state.initial_CV_questions = True
-
-                save_json_str_to_dict(st.session_state, json_str)
-
-# Handle CV generation trigger (after all chat processing, shows spinner below chat)
 if st.session_state.get("trigger_cv_generation", False):
     st.session_state.trigger_cv_generation = False
 
-    # Verify CV_dict exists before generating
     if "CV_dict" in st.session_state:
         with st.spinner("Genererer CV..."):
             try:
@@ -487,8 +365,11 @@ if st.session_state.get("trigger_cv_generation", False):
         log_error("cv_generation_no_data", "CV_dict not in session state")
         st.error("Ingen CV data funnet. Vennligst samle inn data først.")
 
-# Show download button if PDF exists and not currently processing a message
-# (placed below chat history, above chat_input)
+
+# -----------------------------------------------------------------------------
+# Show Download Button
+# -----------------------------------------------------------------------------
+
 if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_clicked", False) and not user_message:
     download_clicked = st.download_button(
         type="primary",
@@ -503,6 +384,3 @@ if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_cli
             "session_duration": get_session_duration(),
             "message_count": len(st.session_state.get("messages", []))
         })
-
-
-

@@ -20,13 +20,16 @@ def display_suggestions_and_cv_button(suggestions, key_suffix):
             suggestion_items = parse_examples_to_list(suggestions)
             if suggestion_items:
                 with st.expander("💡 Klikk for å velge forslag", expanded=False):
-                    st.session_state.selected_pill_suggestions = st.pills(
+                    # Let the widget manage its own state via the key
+                    st.pills(
                         label="Velg forslag (kan velge flere)",
                         options=suggestion_items,
                         selection_mode="multi",
-                        key=f"pills_{key_suffix}",
-                        default=st.session_state.selected_pill_suggestions
-                    ) or []
+                        key=f"pills_{key_suffix}"
+                    )
+
+                    # Read the widget's value from session state (not a circular assignment)
+                    st.session_state.selected_pill_suggestions = st.session_state.get(f"pills_{key_suffix}", [])
 
     with col2:
         if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:

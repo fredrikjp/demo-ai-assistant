@@ -245,20 +245,14 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
 
             response = st.write_stream(response_gen)
 
-            # Generate suggestions
-            suggestions = None
-            if st.session_state.get("CV_mode", False):
-                user_data = st.session_state.get("CV_dict", {})
-                suggestions = generate_adaptive_suggestions(client, response, user_data)
-
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response,
-                "suggestions": suggestions
+                "suggestions": None
             })
 
-            # Display suggestions and CV button
-            display_suggestions_and_cv_button(suggestions, f"pdf_{len(st.session_state.messages)}")
+            # Mark that we just created a new message
+            st.session_state.new_message_created = True
 
         st.session_state.CV_uploaded = True
     else:
@@ -269,16 +263,51 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
 # Handle User Message
 # -----------------------------------------------------------------------------
 
-if user_message is not None:
+def process_user_message(message):
+    """Process and sanitize user message."""
     # Combine pill selections with user input
-    user_message = combine_pills_with_user_input(user_message)
+    message = combine_pills_with_user_input(message)
+    # Escape markdown special characters
+    message = message.replace("$", r"\$")
+    message = message.replace("'", "")
+    return message
 
+
+def apply_rate_limiting():
+    """Apply rate limiting between requests."""
+    question_timestamp = datetime.datetime.now()
+    time_diff = question_timestamp - st.session_state.prev_question_timestamp
+    st.session_state.prev_question_timestamp = question_timestamp
+
+    if time_diff < MIN_TIME_BETWEEN_REQUESTS:
+        time.sleep(time_diff.seconds + time_diff.microseconds * 0.001)
+
+
+def get_llm_response(user_message):
+    """Build prompt and get LLM response."""
+    if DEBUG_MODE:
+        with st.status("Computing prompt...") as status:
+            full_prompt = build_question_prompt(st.session_state.messages, user_message)
+            st.code(full_prompt)
+            status.update(label="Prompt computed")
+    else:
+        with st.spinner("Researching..."):
+            full_prompt = build_question_prompt(st.session_state.messages, user_message)
+
+    with st.spinner("Thinking..."):
+        response_gen = get_response(client, full_prompt)
+
+    return st.write_stream(response_gen)
+
+
+if user_message is not None:
+    # Process user message
+    user_message = process_user_message(user_message)
+
+    # Update session state
     st.session_state.user_message = user_message
     st.session_state.generate_CV_button_clicked = False
     st.session_state.trigger_cv_generation = False
-
-    # Escape markdown special characters
-    user_message = user_message.replace("$", r"\$")
 
     # Display user message
     with st.chat_message("user"):
@@ -288,30 +317,10 @@ if user_message is not None:
     with st.chat_message("assistant"):
         # Rate limiting
         with st.spinner("Waiting..."):
-            question_timestamp = datetime.datetime.now()
-            time_diff = question_timestamp - st.session_state.prev_question_timestamp
-            st.session_state.prev_question_timestamp = question_timestamp
+            apply_rate_limiting()
 
-            if time_diff < MIN_TIME_BETWEEN_REQUESTS:
-                time.sleep(time_diff.seconds + time_diff.microseconds * 0.001)
-
-            user_message = user_message.replace("'", "")
-
-        # Build prompt
-        if DEBUG_MODE:
-            with st.status("Computing prompt...") as status:
-                full_prompt = build_question_prompt(st.session_state.messages, user_message)
-                st.code(full_prompt)
-                status.update(label="Prompt computed")
-        else:
-            with st.spinner("Researching..."):
-                full_prompt = build_question_prompt(st.session_state.messages, user_message)
-
-        # Get and stream LLM response
-        with st.spinner("Thinking..."):
-            response_gen = get_response(client, full_prompt)
-
-        response = st.write_stream(response_gen)
+        # Get LLM response
+        response = get_llm_response(user_message)
 
         # Add to chat history
         st.session_state.messages.append({"role": "user", "content": user_message})
@@ -321,19 +330,33 @@ if user_message is not None:
             "suggestions": None
         })
 
-        # Generate suggestions
-        suggestions = None
-        if st.session_state.get("CV_mode", False):
-            user_data = st.session_state.get("CV_dict", {})
-            suggestions = generate_adaptive_suggestions(client, response, user_data)
-            st.session_state.messages[-1]["suggestions"] = suggestions
+        # Mark that we just created a new message
+        st.session_state.new_message_created = True
 
-        # Display suggestions and CV button
+
+# -----------------------------------------------------------------------------
+# Post-Message Processing (for both user messages and PDF uploads)
+# -----------------------------------------------------------------------------
+
+if st.session_state.get("new_message_created", False):
+    # Get the most recent assistant message
+    last_message = st.session_state.messages[-1]
+
+    # Generate suggestions if in CV mode
+    if st.session_state.get("CV_mode", False) and last_message["role"] == "assistant":
+        user_data = st.session_state.get("CV_dict", {})
+        suggestions = generate_adaptive_suggestions(client, last_message["content"], user_data)
+        st.session_state.messages[-1]["suggestions"] = suggestions
+
+        # Display suggestions and CV button inline
         if not st.session_state.get("trigger_cv_generation", False):
             display_suggestions_and_cv_button(suggestions, f"user_{len(st.session_state.messages)}")
 
-        # Extract JSON data from conversation
-        extract_and_save_json_data(client)
+    # Extract JSON data from conversation
+    extract_and_save_json_data(client)
+
+    # Reset the flag
+    st.session_state.new_message_created = False
 
 
 # -----------------------------------------------------------------------------

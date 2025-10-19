@@ -27,8 +27,7 @@ from src.config import SUGGESTIONS, MIN_TIME_BETWEEN_REQUESTS
 from src.llm_client import (
     get_openai_client,
     build_question_prompt,
-    get_response,
-    generate_adaptive_suggestions
+    get_response
 )
 
 # Import data functions
@@ -49,7 +48,8 @@ from src.ui_helpers import (
     display_message_with_suggestions,
     display_draft_preview,
     stream_initial_message,
-    combine_pills_with_user_input
+    combine_pills_with_user_input,
+    stream_message_with_suggestions
 )
 from src.session_helpers import (
     initialize_app_session_state,
@@ -248,12 +248,13 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
                 full_prompt = build_question_prompt(st.session_state.messages, pdf_message_content)
                 response_gen = get_response(client, full_prompt)
 
-            response = st.write_stream(response_gen)
+            # Stream response with suggestions
+            response, suggestions = stream_message_with_suggestions(response_gen, client, f"pdf_{len(st.session_state.messages)}")
 
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response,
-                "suggestions": None
+                "suggestions": suggestions
             })
 
             # Mark that we just created a new message
@@ -324,15 +325,28 @@ if user_message is not None:
         with st.spinner("Waiting..."):
             apply_rate_limiting()
 
-        # Get LLM response
-        response = get_llm_response(user_message)
+        # Build prompt and get response generator
+        if DEBUG_MODE:
+            with st.status("Computing prompt...") as status:
+                full_prompt = build_question_prompt(st.session_state.messages, user_message)
+                st.code(full_prompt)
+                status.update(label="Prompt computed")
+        else:
+            with st.spinner("Researching..."):
+                full_prompt = build_question_prompt(st.session_state.messages, user_message)
+
+        with st.spinner("Thinking..."):
+            response_gen = get_response(client, full_prompt)
+
+        # Stream response with suggestions
+        response, suggestions = stream_message_with_suggestions(response_gen, client, f"user_{len(st.session_state.messages)}")
 
         # Add to chat history
         st.session_state.messages.append({"role": "user", "content": user_message})
         st.session_state.messages.append({
             "role": "assistant",
             "content": response,
-            "suggestions": None
+            "suggestions": suggestions
         })
 
         # Mark that we just created a new message
@@ -344,15 +358,6 @@ if user_message is not None:
 # -----------------------------------------------------------------------------
 
 if st.session_state.get("new_message_created", False):
-    # Get the most recent assistant message
-    last_message = st.session_state.messages[-1]
-
-    # Generate suggestions if in CV mode
-    if st.session_state.get("CV_mode", False) and last_message["role"] == "assistant":
-        user_data = st.session_state.get("CV_dict", {})
-        suggestions = generate_adaptive_suggestions(client, last_message["content"], user_data)
-        st.session_state.messages[-1]["suggestions"] = suggestions
-
     # Extract JSON data from conversation
     extract_and_save_json_data(client)
 

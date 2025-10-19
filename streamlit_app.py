@@ -46,6 +46,7 @@ from src.metrics import (
 # Import UI and session helpers
 from src.ui_helpers import (
     display_suggestions_and_cv_button,
+    display_message_with_suggestions,
     display_draft_preview,
     stream_initial_message,
     combine_pills_with_user_input
@@ -199,14 +200,18 @@ for i, message in enumerate(st.session_state.messages):
             st.write_stream(stream_initial_message(st.session_state.messages[-1]["content"]))
             continue
 
-        st.markdown(message["content"])
-
-        # Show suggestions only for the most recent assistant message
+        # Show message with suggestions sidebar for the most recent assistant message
         # Don't show if we're about to create a new message inline (to avoid duplication)
         if message["role"] == "assistant" and message.get("suggestions"):
             is_last_message = (i == len(st.session_state.messages) - 1)
             if is_last_message and not creating_new_message:
-                display_suggestions_and_cv_button(message["suggestions"], f"history_{i}")
+                display_message_with_suggestions(message["content"], message["suggestions"], f"history_{i}")
+            else:
+                # Historical messages without suggestions sidebar
+                st.markdown(message["content"])
+        else:
+            # User messages or assistant messages without suggestions
+            st.markdown(message["content"])
 
 
 # Show draft message preview (only when not sending)
@@ -348,15 +353,12 @@ if st.session_state.get("new_message_created", False):
         suggestions = generate_adaptive_suggestions(client, last_message["content"], user_data)
         st.session_state.messages[-1]["suggestions"] = suggestions
 
-        # Display suggestions and CV button inline
-        if not st.session_state.get("trigger_cv_generation", False):
-            display_suggestions_and_cv_button(suggestions, f"user_{len(st.session_state.messages)}")
-
     # Extract JSON data from conversation
     extract_and_save_json_data(client)
 
-    # Reset the flag
+    # Reset the flag and trigger rerun to display with sidebar layout
     st.session_state.new_message_created = False
+    st.rerun()
 
 
 # -----------------------------------------------------------------------------

@@ -6,38 +6,82 @@ from src.data_utils import parse_examples_to_list
 from src.metrics import track_cv_generation_attempt
 
 
+def display_message_with_suggestions(message_content, suggestions, key_suffix):
+    """Display assistant message with suggestions sidebar layout.
+
+    Args:
+        message_content: The assistant's message text
+        suggestions: Markdown string with bullet-point suggestions
+        key_suffix: Unique suffix for widget keys (e.g., "pdf_1", "user_2")
+    """
+    # Create sidebar layout: message content on left, suggestions on right
+    col_main, col_suggestions = st.columns([2.5, 1])
+
+    # Main message content (left side)
+    with col_main:
+        st.markdown(message_content)
+
+    # Suggestions sidebar (right side)
+    with col_suggestions:
+        if suggestions:
+            suggestion_items = parse_examples_to_list(suggestions)
+            if suggestion_items:
+                st.markdown("**💡 Forslag:**")
+
+                # Let the widget manage its own state via the key
+                st.pills(
+                    label="Velg forslag",
+                    label_visibility="collapsed",
+                    options=suggestion_items,
+                    selection_mode="multi",
+                    key=f"pills_{key_suffix}"
+                )
+
+                # Read the widget's value from session state (not a circular assignment)
+                st.session_state.selected_pill_suggestions = st.session_state.get(f"pills_{key_suffix}", [])
+
+        # CV generation button (right below pills)
+        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+            st.button(
+                "📄 Generer CV",
+                key=f"generate_cv_button_{key_suffix}",
+                on_click=lambda: trigger_cv_generation(),
+                use_container_width=True
+            )
+
+
 def display_suggestions_and_cv_button(suggestions, key_suffix):
-    """Display suggestion pills and CV generation button side by side.
+    """Display suggestion pills and CV generation button (legacy - for inline display).
 
     Args:
         suggestions: Markdown string with bullet-point suggestions
         key_suffix: Unique suffix for widget keys (e.g., "pdf_1", "user_2")
     """
-    col1, col2 = st.columns([4, 1])
+    if suggestions:
+        suggestion_items = parse_examples_to_list(suggestions)
+        if suggestion_items:
+            st.markdown("**💡 Forslag:**")
 
-    with col1:
-        if suggestions:
-            suggestion_items = parse_examples_to_list(suggestions)
-            if suggestion_items:
-                with st.expander("💡 Klikk for å velge forslag", expanded=False):
-                    # Let the widget manage its own state via the key
-                    st.pills(
-                        label="Velg forslag (kan velge flere)",
-                        options=suggestion_items,
-                        selection_mode="multi",
-                        key=f"pills_{key_suffix}"
-                    )
-
-                    # Read the widget's value from session state (not a circular assignment)
-                    st.session_state.selected_pill_suggestions = st.session_state.get(f"pills_{key_suffix}", [])
-
-    with col2:
-        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-            st.button(
-                "📄 Generer CV",
-                key=f"generate_cv_button_{key_suffix}",
-                on_click=lambda: trigger_cv_generation()
+            # Let the widget manage its own state via the key
+            st.pills(
+                label="Velg forslag",
+                label_visibility="collapsed",
+                options=suggestion_items,
+                selection_mode="multi",
+                key=f"pills_{key_suffix}"
             )
+
+            # Read the widget's value from session state (not a circular assignment)
+            st.session_state.selected_pill_suggestions = st.session_state.get(f"pills_{key_suffix}", [])
+
+    # CV generation button
+    if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+        st.button(
+            "📄 Generer CV",
+            key=f"generate_cv_button_{key_suffix}",
+            on_click=lambda: trigger_cv_generation(),
+            use_container_width=True
+        )
 
 
 def trigger_cv_generation():

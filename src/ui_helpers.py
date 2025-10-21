@@ -3,72 +3,131 @@
 import time
 import streamlit as st
 from concurrent.futures import ThreadPoolExecutor, Future
-from src.data_utils import parse_examples_to_list
+from src.data_utils import parse_examples_to_list, calculate_cv_completion
 from src.metrics import track_cv_generation_attempt
 
 
+def render_vertical_progress_bar(completion_percentage):
+    """Render a vertical progress bar using HTML/CSS.
+
+    Args:
+        completion_percentage: Float between 0.0 and 1.0 representing completion
+    """
+    percentage = int(completion_percentage * 100)
+
+    # Create vertical progress bar with HTML/CSS
+    progress_html = f"""
+    <style>
+        .vertical-progress {{
+            width: 20px;
+            height: 513px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        .vertical-progress-fill {{
+            width: 100%;
+            background: linear-gradient(to top, #4CAF50, #8BC34A);
+            position: absolute;
+            bottom: 0;
+            transition: height 0.3s ease;
+            border-radius: 10px;
+            height: {percentage}%;
+        }}
+        .progress-text {{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-90deg);
+            font-size: 10px;
+            font-weight: bold;
+            color: #333;
+            white-space: nowrap;
+        }}
+    </style>
+    <div class="vertical-progress">
+        <div class="vertical-progress-fill"></div>
+        <div class="progress-text">{percentage}%</div>
+    </div>
+    """
+    st.markdown(progress_html, unsafe_allow_html=True)
+
+
 def display_message_with_suggestions(message_content, suggestions, key_suffix):
-    """Display assistant message with clickable suggestion examples sidebar layout.
+    """Display assistant message with clickable suggestion examples in sidebar.
 
     Args:
         message_content: The assistant's message text
         suggestions: Markdown string with bullet-point suggestions
         key_suffix: Unique suffix for widget keys (e.g., "pdf_1", "user_2")
     """
-    # Create sidebar layout: message content on left, suggestions on right
-    col_main, col_suggestions = st.columns([2.5, 1])
+    # Main message content
+    st.markdown(message_content)
 
-    # Main message content (left side)
-    with col_main:
-        st.markdown(message_content)
+    # Suggestions in actual sidebar
+    with st.sidebar:
+        # Header above columns, center-aligned and positioned with col2
+        st.markdown('<h2 style="margin-left: 7%; margin-top: 0; text-align: center;">💡 Klikkbare forslag/eksempler</h2>', unsafe_allow_html=True)
 
-    # Suggestions sidebar (right side) - clickable examples
-    with col_suggestions:
-        if suggestions:
-            suggestion_items = parse_examples_to_list(suggestions)
-            if suggestion_items:
-                st.markdown("**💡 Eksempler:**")
+        col1, col2 = st.columns([0.07,0.93], vertical_alignment="bottom")
 
-                # Initialize selected suggestions in session state
-                if "selected_suggestions" not in st.session_state:
-                    st.session_state.selected_suggestions = []
+        # Add vertical progress bar in col1 (left side)
+        with col1:
+            cv_dict = st.session_state.get("CV_dict", {})
+            completion = calculate_cv_completion(cv_dict)
+            render_vertical_progress_bar(completion)
 
-                # Display each suggestion as a clickable button with markdown style
-                for idx, suggestion in enumerate(suggestion_items):
-                    # Create unique key for each suggestion button
-                    button_key = f"suggestion_{key_suffix}_{idx}"
+        with col2:
+            if suggestions:
+                suggestion_items = parse_examples_to_list(suggestions)
+                if suggestion_items:
 
-                    # Check if this suggestion is already selected
-                    is_selected = suggestion in st.session_state.selected_suggestions
+                    # Initialize selected suggestions in session state
+                    if "selected_suggestions" not in st.session_state:
+                        st.session_state.selected_suggestions = []
 
-                    # Display as a button that looks like text
-                    button_label = f"{'✓ ' if is_selected else ''}{suggestion}"
-                    button_type = "primary" if is_selected else "secondary"
+                    # Display each suggestion as a clickable button with markdown style
+                    for idx, suggestion in enumerate(suggestion_items):
+                        # Create unique key for each suggestion button
+                        button_key = f"suggestion_{key_suffix}_{idx}"
 
-                    if st.button(
-                        button_label,
-                        key=button_key,
-                        use_container_width=True,
-                        type=button_type
-                    ):
-                        # Toggle selection
-                        if is_selected:
-                            st.session_state.selected_suggestions.remove(suggestion)
-                        else:
-                            st.session_state.selected_suggestions.append(suggestion)
-                        st.rerun()
+                        # Check if this suggestion is already selected
+                        is_selected = suggestion in st.session_state.selected_suggestions
 
-                # Store for backwards compatibility
-                st.session_state.selected_pill_suggestions = st.session_state.selected_suggestions
+                        # Display as a button that looks like text
+                        button_label = f"{'✓ ' if is_selected else ''}{suggestion}"
+                        button_type = "primary" if is_selected else "secondary"
 
-        # CV generation button (right below suggestions)
-        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-            st.button(
-                "📄 Generer CV",
-                key=f"generate_cv_button_{key_suffix}",
-                on_click=lambda: trigger_cv_generation(),
-                use_container_width=True
-            )
+                        if st.button(
+                            button_label,
+                            key=button_key,
+                            use_container_width=True,
+                            type=button_type
+                        ):
+                            # Toggle selection
+                            if is_selected:
+                                st.session_state.selected_suggestions.remove(suggestion)
+                            else:
+                                st.session_state.selected_suggestions.append(suggestion)
+                            st.rerun()
+
+                    # Store for backwards compatibility
+                    st.session_state.selected_pill_suggestions = st.session_state.selected_suggestions
+
+            # Add spacing to push button to bottom
+            st.container(height=10, border=False)
+
+            # CV generation button at bottom of sidebar
+            if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                st.button(
+                    "📄 Generer CV",
+                    key=f"generate_cv_button_{key_suffix}",
+                    on_click=lambda: trigger_cv_generation(),
+                    use_container_width=True,
+                    type="primary"
+                )
 
 
 def display_suggestions_and_cv_button(suggestions, key_suffix):
@@ -180,7 +239,7 @@ def combine_pills_with_user_input(user_message):
 
 
 def stream_message_with_suggestions(response_generator, client, key_suffix):
-    """Stream assistant message and suggestions side-by-side with real-time updates.
+    """Stream assistant message and display suggestions in sidebar with real-time updates.
 
     Args:
         response_generator: Generator yielding response chunks
@@ -192,16 +251,8 @@ def stream_message_with_suggestions(response_generator, client, key_suffix):
     """
     from src.llm_client import generate_adaptive_suggestions
 
-    # Create two-column layout
-    col_main, col_suggestions = st.columns([2.5, 1])
-
-    # Containers for streaming content
-    with col_main:
-        message_container = st.empty()
-
-    with col_suggestions:
-        suggestions_container = st.container()
-        suggestions_placeholder = suggestions_container.empty()
+    # Main message container
+    message_container = st.empty()
 
     # Stream the main response
     response_text = ""
@@ -209,57 +260,70 @@ def stream_message_with_suggestions(response_generator, client, key_suffix):
         response_text += chunk
         message_container.markdown(response_text)
 
-    # Now that response is complete, generate suggestions in parallel
-    # Show a loading indicator while generating
-    with suggestions_placeholder:
-        with st.spinner("Genererer forslag..."):
-            suggestions = None
+    # Now that response is complete, generate suggestions
+    suggestions = None
+
+    # Display suggestions in sidebar
+    with st.sidebar:
+        # Header above columns, center-aligned and positioned with col2
+        st.markdown('<h2 style="margin-left: 7%; margin-top: 0; text-align: center;">💡 Klikkbare forslag/eksempler</h2>', unsafe_allow_html=True)
+
+        col1, col2 = st.columns([0.07,0.93], vertical_alignment="bottom")
+
+        # Add vertical progress bar in col1 (left side)
+        with col1:
+            cv_dict = st.session_state.get("CV_dict", {})
+            completion = calculate_cv_completion(cv_dict)
+            render_vertical_progress_bar(completion)
+
+        with col2:
+            # Generate suggestions inside sidebar so spinner appears there
             if st.session_state.get("CV_mode", False):
                 user_data = st.session_state.get("CV_dict", {})
-                suggestions = generate_adaptive_suggestions(client, response_text, user_data)
+                with st.spinner("Genererer forslag..."):
+                    suggestions = generate_adaptive_suggestions(client, response_text, user_data)
 
-    # Clear the spinner and display suggestions
-    suggestions_placeholder.empty()
+            if suggestions:
+                suggestion_items = parse_examples_to_list(suggestions)
+                if suggestion_items:
+                    st.markdown("**💡 Eksempler:**")
 
-    # Display suggestions as clickable buttons
-    with suggestions_container:
-        if suggestions:
-            suggestion_items = parse_examples_to_list(suggestions)
-            if suggestion_items:
-                st.markdown("**💡 Eksempler:**")
+                    # Initialize selected suggestions in session state
+                    if "selected_suggestions" not in st.session_state:
+                        st.session_state.selected_suggestions = []
 
-                # Initialize selected suggestions in session state
-                if "selected_suggestions" not in st.session_state:
-                    st.session_state.selected_suggestions = []
+                    # Display each suggestion as a clickable button
+                    for idx, suggestion in enumerate(suggestion_items):
+                        button_key = f"suggestion_{key_suffix}_{idx}"
+                        is_selected = suggestion in st.session_state.selected_suggestions
+                        button_label = f"{'✓ ' if is_selected else ''}{suggestion}"
+                        button_type = "primary" if is_selected else "secondary"
 
-                # Display each suggestion as a clickable button
-                for idx, suggestion in enumerate(suggestion_items):
-                    button_key = f"suggestion_{key_suffix}_{idx}"
-                    is_selected = suggestion in st.session_state.selected_suggestions
-                    button_label = f"{'✓ ' if is_selected else ''}{suggestion}"
-                    button_type = "primary" if is_selected else "secondary"
+                        if st.button(
+                            button_label,
+                            key=button_key,
+                            use_container_width=True,
+                            type=button_type
+                        ):
+                            if is_selected:
+                                st.session_state.selected_suggestions.remove(suggestion)
+                            else:
+                                st.session_state.selected_suggestions.append(suggestion)
+                            st.rerun()
 
-                    if st.button(
-                        button_label,
-                        key=button_key,
-                        use_container_width=True,
-                        type=button_type
-                    ):
-                        if is_selected:
-                            st.session_state.selected_suggestions.remove(suggestion)
-                        else:
-                            st.session_state.selected_suggestions.append(suggestion)
-                        st.rerun()
+                    st.session_state.selected_pill_suggestions = st.session_state.selected_suggestions
 
-                st.session_state.selected_pill_suggestions = st.session_state.selected_suggestions
+            # Add spacing to push button to bottom
+            st.container(height=10, border=False)
 
-        # CV generation button
-        if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
-            st.button(
-                "📄 Generer CV",
-                key=f"generate_cv_button_{key_suffix}",
-                on_click=lambda: trigger_cv_generation(),
-                use_container_width=True
-            )
+            # CV generation button at bottom of sidebar
+            if st.session_state.get("CV_mode", False) and "CV_dict" in st.session_state:
+                st.button(
+                    "📄 Generer CV",
+                    key=f"generate_cv_button_{key_suffix}",
+                    on_click=lambda: trigger_cv_generation(),
+                    use_container_width=True,
+                    type="primary"
+                )
 
     return response_text, suggestions

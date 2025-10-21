@@ -126,6 +126,69 @@ def parse_examples_to_list(examples_markdown):
     return examples
 
 
+def calculate_cv_completion(cv_dict):
+    """Calculate completion percentage of CV data.
+
+    Args:
+        cv_dict: Current CV data dictionary
+
+    Returns:
+        float: Completion percentage (0.0 to 1.0)
+    """
+    def count_fields(data, is_required=True):
+        """Recursively count total and filled fields."""
+        total = 0
+        filled = 0
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    # Nested dict
+                    t, f = count_fields(value, is_required)
+                    total += t
+                    filled += f
+                elif isinstance(value, list):
+                    # List - count based on schema expectations
+                    if len(value) > 0:
+                        # Count fields in list items
+                        for item in value:
+                            if isinstance(item, dict):
+                                t, f = count_fields(item, is_required)
+                                total += t
+                                filled += f
+                            elif isinstance(item, str) and item.strip():
+                                total += 1
+                                filled += 1
+                            elif isinstance(item, str):
+                                total += 1
+                    else:
+                        # Empty list - count as 1 unfilled field for required sections
+                        if is_required and key not in ["Sertifikater", "Annet"]:
+                            total += 1
+                else:
+                    # Primitive field
+                    total += 1
+                    if value and str(value).strip():
+                        filled += 1
+        elif isinstance(data, list):
+            for item in data:
+                t, f = count_fields(item, is_required)
+                total += t
+                filled += f
+
+        return total, filled
+
+    if not cv_dict:
+        return 0.0
+
+    total_fields, filled_fields = count_fields(cv_dict)
+
+    if total_fields == 0:
+        return 0.0
+
+    return filled_fields / total_fields
+
+
 def extract_cv_from_pdf(client, uploaded_file):
     """Extract CV data from uploaded PDF file.
 

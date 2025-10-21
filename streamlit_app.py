@@ -66,6 +66,18 @@ client = get_openai_client(api_key=st.secrets["OPENAI_API_KEY"])
 # Page configuration
 st.set_page_config(page_title="Ungt Steg AI Assistent", page_icon="✨")
 
+# Custom CSS to set sidebar width to 40% of screen when expanded
+st.markdown("""
+    <style>
+        section[data-testid="stSidebar"]:not([aria-hidden="true"]) > div:first-child {
+            width: 40vw;
+        }
+        section[data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
+            width: 40vw;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # Debug mode
 DEBUG_MODE = st.query_params.get("debug", "false").lower() == "true"
 

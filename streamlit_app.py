@@ -217,7 +217,7 @@ for i, message in enumerate(st.session_state.messages):
         if message["role"] == "assistant" and message.get("suggestions"):
             is_last_message = (i == len(st.session_state.messages) - 1)
             if is_last_message and not creating_new_message:
-                display_message_with_suggestions(message["content"], message["suggestions"], f"history_{i}")
+                display_message_with_suggestions(message["content"], message["suggestions"], f"history_{i}", client=client, message_index=i)
             else:
                 # Historical messages without suggestions sidebar
                 st.markdown(message["content"])

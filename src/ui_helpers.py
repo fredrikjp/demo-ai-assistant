@@ -55,13 +55,15 @@ def render_vertical_progress_bar(completion_percentage):
     st.markdown(progress_html, unsafe_allow_html=True)
 
 
-def display_message_with_suggestions(message_content, suggestions, key_suffix):
+def display_message_with_suggestions(message_content, suggestions, key_suffix, client=None, message_index=None):
     """Display assistant message with clickable suggestion examples in sidebar.
 
     Args:
         message_content: The assistant's message text
         suggestions: Markdown string with bullet-point suggestions
         key_suffix: Unique suffix for widget keys (e.g., "pdf_1", "user_2")
+        client: OpenAI client for regenerating suggestions (optional)
+        message_index: Index of this message in session state messages list (optional)
     """
     # Main message content
     st.markdown(message_content)
@@ -80,6 +82,33 @@ def display_message_with_suggestions(message_content, suggestions, key_suffix):
             render_vertical_progress_bar(completion)
 
         with col2:
+            # Regenerate button below header - small icon only
+            if client is not None and message_index is not None and st.session_state.get("CV_mode", False):
+                # Create small button with custom styling
+                col_btn1, col_btn2 = st.columns([0.1, 0.9])
+                with col_btn1:
+                    # Check if currently regenerating
+                    regenerating_key = f"regenerating_{key_suffix}"
+                    if st.session_state.get(regenerating_key, False):
+                        # Show spinner instead of button
+                        with st.spinner(""):
+                            from src.llm_client import generate_adaptive_suggestions
+                            # Get context and request variation
+                            user_data = st.session_state.get("CV_dict", {})
+                            new_suggestions = generate_adaptive_suggestions(client, message_content, user_data, request_variation=True)
+                            # Update message suggestions in session state
+                            st.session_state.messages[message_index]["suggestions"] = new_suggestions
+                            # Clear the regenerating flag
+                            st.session_state[regenerating_key] = False
+                            st.rerun()
+                    else:
+                        # Show button
+                        if st.button("🔄", key=f"regenerate_btn_{key_suffix}", help="Regenerer forslag"):
+                            # Set regenerating flag and rerun
+                            st.session_state[regenerating_key] = True
+                            st.rerun()
+
+
             if suggestions:
                 suggestion_items = parse_examples_to_list(suggestions)
                 if suggestion_items:
@@ -168,6 +197,20 @@ def trigger_cv_generation():
     """Trigger CV generation and track the attempt."""
     st.session_state.trigger_cv_generation = True
     track_cv_generation_attempt()
+
+
+def regenerate_suggestions(key_suffix):
+    """Regenerate suggestions for a specific message.
+
+    Args:
+        key_suffix: Unique suffix identifying which message's suggestions to regenerate
+    """
+    context_key = f"suggestion_context_{key_suffix}"
+
+    if context_key in st.session_state:
+        # Mark that we want to regenerate for this specific message
+        st.session_state[f"regenerate_{key_suffix}"] = True
+        st.rerun()
 
 
 def display_draft_preview():
@@ -277,11 +320,40 @@ def stream_message_with_suggestions(response_generator, client, key_suffix):
             render_vertical_progress_bar(completion)
 
         with col2:
-            # Generate suggestions inside sidebar so spinner appears there
+            # Regenerate button for streaming message - small icon only
+            regenerating_stream_key = f"regenerating_stream_{key_suffix}"
             if st.session_state.get("CV_mode", False):
-                user_data = st.session_state.get("CV_dict", {})
-                with st.spinner("Genererer forslag..."):
-                    suggestions = generate_adaptive_suggestions(client, response_text, user_data)
+                # Create small button with custom styling
+                col_btn1, col_btn2 = st.columns([0.1, 0.9])
+                with col_btn1:
+                    # Check if currently regenerating
+                    if st.session_state.get(regenerating_stream_key, False):
+                        # Show spinner instead of button
+                        with st.spinner(""):
+                            user_data = st.session_state.get("CV_dict", {})
+                            new_suggestions = generate_adaptive_suggestions(client, response_text, user_data, request_variation=True)
+                            # Clear the regenerating flag
+                            st.session_state[regenerating_stream_key] = False
+                            # Store suggestions for display
+                            st.session_state[f"suggestions_{key_suffix}"] = new_suggestions
+                            st.rerun()
+                    else:
+                        # Show button
+                        if st.button("🔄", key=f"regenerate_stream_btn_{key_suffix}", help="Regenerer forslag"):
+                            # Set regenerating flag and rerun
+                            st.session_state[regenerating_stream_key] = True
+                            st.rerun()
+
+
+            # Generate suggestions inside sidebar so spinner appears there (first time only)
+            if st.session_state.get("CV_mode", False) and not st.session_state.get(regenerating_stream_key, False):
+                # Check if we have cached suggestions from regeneration
+                if f"suggestions_{key_suffix}" in st.session_state:
+                    suggestions = st.session_state[f"suggestions_{key_suffix}"]
+                else:
+                    user_data = st.session_state.get("CV_dict", {})
+                    with st.spinner(""):
+                        suggestions = generate_adaptive_suggestions(client, response_text, user_data)
 
             if suggestions:
                 suggestion_items = parse_examples_to_list(suggestions)

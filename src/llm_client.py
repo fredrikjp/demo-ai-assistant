@@ -150,7 +150,7 @@ def generator_to_string(gen):
     return "".join(chunk for chunk in gen if isinstance(chunk, str))
 
 
-def generate_adaptive_suggestions(client, question, user_data):
+def generate_adaptive_suggestions(client, question, user_data, request_variation=False):
     """
     Generate context-aware suggestions based on question type and user's CV data.
 
@@ -158,11 +158,16 @@ def generate_adaptive_suggestions(client, question, user_data):
         client: OpenAI client instance
         question: The question the assistant just asked
         user_data: Dictionary containing user's CV data so far
+        request_variation: If True, generate alternative/different suggestions
 
     Returns:
         str: Adaptive suggestions in markdown format, or None if no suggestions needed
     """
     import json
+
+    variation_instruction = ""
+    if request_variation:
+        variation_instruction = "\n\n**VIKTIG: Generer ALTERNATIVE og FORSKJELLIGE forslag fra tidligere. Vær kreativ og kom med nye ideer som brukeren kanskje ikke har tenkt på. Unngå å gjenta eksempler som har blitt vist før.**\n"
 
     prompt = f"""
 Du er en intelligent CV-assistent som tilpasser forslag basert på spørsmålstype og brukerens profil.
@@ -171,7 +176,7 @@ Spørsmål assistenten stilte: {question}
 
 Brukerens CV-data så langt:
 {json.dumps(user_data, ensure_ascii=False, indent=2)}
-
+{variation_instruction}
 Analyser spørsmålet og generer passende forslag basert på disse retningslinjene:
 
 **TYPE 1 - Spesifikk informasjon (e-post, telefon, adresse, fødselsdato etc.):**
@@ -199,22 +204,25 @@ Analyser spørsmålet og generer passende forslag basert på disse retningslinje
 - Returner "NONE" hvis spørsmålet ikke trenger forslag
 - KUN returner forslagene, ingen forklaring eller overskrift
 - Tilpass språknivå og eksempler til brukerens situasjon
-- Produser alltid mest sannsynlig forslag for brukeren
+- Produser alltid mest sannsynlig forslag for brukeren f.eks. bosted samt alder svært relevant for nåværende skole forslag
 - Få med alle sannsynlige forslag: 
-    - Språk skriftlig og muntlig: Norsk, Engelsk, Tysk, Spansk, Fransk burde være standard og andre språk kan legges til basert på brukerens profil.
+    - Språk: Norsk morsmål, Engelsk flytende muntlig utmerked skriftlig, Tysk grunnleggende muntlig og skriftlig, Spansk flytende muntlig og grunnleggende skriftlig, Fransk ... burde være standard og andre språk kan legges til basert på brukerens profil.
 
 
 Kun returner forslagslisten.
 """
 
     try:
+        # Use higher temperature for variation to get more diverse suggestions
+        temperature = 1.0 if request_variation else 0.7
+
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": "You are an intelligent CV suggestion assistant that adapts to question context."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
+            temperature=temperature,
         )
 
         suggestions = response.choices[0].message.content.strip()

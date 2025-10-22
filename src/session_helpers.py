@@ -38,7 +38,7 @@ def extract_and_save_json_data(client):
     Args:
         client: OpenAI client instance
     """
-    if not st.session_state.get("CV_mode", False) or len(st.session_state.messages) <= 1:
+    if not st.session_state.get("CV_mode", False) or len(st.session_state.messages) < 3:
         return
 
     assistant_question = st.session_state.messages[-3]["content"]

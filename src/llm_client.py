@@ -196,10 +196,13 @@ Analyser spørsmålet og generer passende forslag basert på disse retningslinje
 **Viktige regler:**
 - Bruk ALLTID bullet points (-)
 - Være KORT og KONSIST (1-2 linjer per punkt)
-- Returner "NONE" hvis spørsmålet ikke trenger forslag (ja/nei spørsmål)
+- Returner "NONE" hvis spørsmålet ikke trenger forslag
 - KUN returner forslagene, ingen forklaring eller overskrift
 - Tilpass språknivå og eksempler til brukerens situasjon
 - Produser alltid mest sannsynlig forslag for brukeren
+- Få med alle sannsynlige forslag: 
+    - Språk skriftlig og muntlig: Norsk, Engelsk, Tysk, Spansk, Fransk burde være standard og andre språk kan legges til basert på brukerens profil.
+
 
 Kun returner forslagslisten.
 """

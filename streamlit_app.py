@@ -269,8 +269,9 @@ if uploaded_cv is not None and not st.session_state.get("CV_uploaded", False):
                 "suggestions": suggestions
             })
 
-            # Mark that we just created a new message
+            # Mark that we just created a new message from PDF upload
             st.session_state.new_message_created = True
+            st.session_state.message_from_pdf_upload = True
 
         st.session_state.CV_uploaded = True
     else:
@@ -370,11 +371,13 @@ if user_message is not None:
 # -----------------------------------------------------------------------------
 
 if st.session_state.get("new_message_created", False):
-    # Extract JSON data from conversation
-    extract_and_save_json_data(client)
+    # Only extract JSON data if it's from user conversation, not PDF upload
+    if not st.session_state.get("message_from_pdf_upload", False):
+        extract_and_save_json_data(client)
 
-    # Reset the flag and trigger rerun to display with sidebar layout
+    # Reset the flags and trigger rerun to display with sidebar layout
     st.session_state.new_message_created = False
+    st.session_state.message_from_pdf_upload = False
     st.rerun()
 
 

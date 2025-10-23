@@ -293,6 +293,7 @@ def get_instructions(session_state):
     - Ta alltid en av gangen dersom brukeren muligens har flere instanser av data som blir forespurt (f.eks Utdanninger).
     - Tilpass spørsmålene dine basert på tidligere svar og hva du lærer om brukeren (f.eks. alder vil være veldig relevant for en ung søker).
     - IKKE inkluder eksempler i ditt svar. Eksempler vil bli generert automatisk og vist separat.
+    - Bruk bullet points hvis mulig for å minimere antall ord og kognitiv belastning.
     - Still spørsmål i en logisk rekkefølge (f.eks. personalia først, deretter utdanning, arbeidserfaring, ferdigheter, interesser og fremtidige mål).
     - Data samlet inn så langt:
     {cv_dict}

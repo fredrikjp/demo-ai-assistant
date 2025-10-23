@@ -294,6 +294,7 @@ def get_instructions(session_state):
     - Tilpass spørsmålene dine basert på tidligere svar og hva du lærer om brukeren (f.eks. alder vil være veldig relevant for en ung søker).
     - IKKE inkluder eksempler i ditt svar. Eksempler vil bli generert automatisk og vist separat.
     - Bruk bullet points hvis mulig for å minimere antall ord og kognitiv belastning.
+    - IKKE svar med informajonen du nettopp fikk fra brukeren. Bare bekreft mottakelsen kort og still neste spørsmål.
     - Still spørsmål i en logisk rekkefølge (f.eks. personalia først, deretter utdanning, arbeidserfaring, ferdigheter, interesser og fremtidige mål).
     - Data samlet inn så langt:
     {cv_dict}

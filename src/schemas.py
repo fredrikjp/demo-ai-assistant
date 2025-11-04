@@ -65,5 +65,13 @@ CV_SCHEMA = {
                 "Begrunnelse": ""
             }
         ]
-    }
+    },
+    "Referanser": [
+        {
+            "Navn": "",
+            "Stilling": "",
+            "Firma": "",
+            "Kontaktinformasjon": ""
+        }
+    ]
 }

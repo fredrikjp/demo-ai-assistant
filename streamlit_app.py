@@ -127,10 +127,7 @@ st.html(div(style=styles(font_size=rem(5), line_height=1))["❉"])
 
 title_row = st.container(horizontal=True, vertical_alignment="bottom")
 with title_row:
-    if st.session_state.get("CV_mode", False):
-        st.title("Ungt Steg CV Generator", anchor=False, width="stretch")
-    else:
-        st.title("Ungt Steg AI assistent", anchor=False, width="stretch")
+    st.title("Ungt Steg AI assistent", anchor=False, width="stretch")
 
 # Check user interaction state
 user_just_asked_initial_question, user_just_clicked_suggestion, user_first_interaction, has_message_history = check_user_interaction()

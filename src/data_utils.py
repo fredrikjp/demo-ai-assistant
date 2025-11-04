@@ -47,7 +47,7 @@ def deep_update(original, new_data):
                 continue
 
             for key, value in v.items():
-                if key in original[-1] and original[-1][key] == "" or original[-1][key] == value:
+                if key in original[-1] and (original[-1][key] == "" or original[-1][key] == value):
                     original[-1] = deep_update(original[-1], v)
                 elif key not in original[-1]:
                     original[-1][key] = v[key]

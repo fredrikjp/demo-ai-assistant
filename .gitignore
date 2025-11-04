@@ -82,8 +82,9 @@ coverage/
 .streamlit/secrets.toml
 
 ########################################################################
-# CV files
+# Generated output files
 ########################################################################
+outputs/
 CV.pdf
 CV.docx
 CV.tex

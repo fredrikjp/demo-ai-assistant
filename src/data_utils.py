@@ -4,7 +4,7 @@ import json
 import textwrap
 import pymupdf
 
-from src.config import CV_SCHEMA
+from src.schemas import CV_SCHEMA
 
 
 def deep_update(original, new_data):

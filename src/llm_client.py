@@ -92,7 +92,7 @@ def build_question_prompt(messages, question, json_generator=False):
     Returns:
         str: Formatted prompt for the LLM
     """
-    from src.config import get_instructions, INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE
+    from src.prompts import get_instructions, INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE
 
     old_history = messages[:-HISTORY_LENGTH] if len(messages) > HISTORY_LENGTH else []
     recent_history = messages[-HISTORY_LENGTH:] if len(messages) > 0 else []

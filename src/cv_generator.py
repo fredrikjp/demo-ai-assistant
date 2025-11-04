@@ -1,10 +1,12 @@
 """CV generation functions (PDF/LaTeX and Word)."""
 
+import os
 import subprocess
 import textwrap
 import io
 
-from src.config import MODEL, LATEX_TEMPLATE
+from src.config import MODEL, OUTPUT_DIR
+from src.templates import LATEX_TEMPLATE
 
 
 def json_to_cv_pdf(client, cv_dict):
@@ -17,6 +19,9 @@ def json_to_cv_pdf(client, cv_dict):
     Returns:
         bool: True if PDF was generated successfully
     """
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     prompt = textwrap.dedent(f"""
         - Lag en proffesjonell CV i latex format basert på JSON data.
         - Bruk informasjon som alder og erfaringer til å tilpasse CVen.
@@ -35,12 +40,15 @@ def json_to_cv_pdf(client, cv_dict):
     )
     latex_cv_code = latex_response_gen.choices[0].message.content
 
-    filename = "CV.tex"
-    with open(filename, mode="w", encoding="utf-8") as f:
+    # Save to outputs directory
+    tex_path = os.path.join(OUTPUT_DIR, "CV.tex")
+    with open(tex_path, mode="w", encoding="utf-8") as f:
         f.write(latex_cv_code)
 
-    # Compile to PDF using pdflatex
-    subprocess.run(["pdflatex", "-interaction=nonstopmode", filename])
+    # Compile to PDF using pdflatex in the outputs directory
+    subprocess.run(
+        ["pdflatex", "-interaction=nonstopmode", "-output-directory", OUTPUT_DIR, tex_path]
+    )
 
     return True
 

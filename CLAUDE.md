@@ -12,20 +12,31 @@ The codebase has been refactored into a modular structure:
 
 ### Module Structure
 
-- **`src/config.py`** - Configuration, constants, and CV data schema
+- **`src/config.py`** - Application configuration and constants
+  - Model settings (`MODEL`, `HISTORY_LENGTH`)
+  - Rate limits and application settings
+  - UI configuration (`SUGGESTIONS`, `GITHUB_URL`)
+  - Output directory configuration (`OUTPUT_DIR`)
+
+- **`src/schemas.py`** - Data structure definitions
   - `CV_SCHEMA`: Defines the nested structure for all CV data
+
+- **`src/templates.py`** - Document templates
   - `LATEX_TEMPLATE`: Professional Norwegian CV LaTeX template
+
+- **`src/prompts.py`** - LLM prompt generation
   - `get_instructions()`: Dynamic prompt generation based on session state
-  - Model settings, rate limits, and UI configuration
+  - `INSTRUCTIONS_GENERATE_DATA_FROM_RESPONSE`: JSON extraction instructions
 
 - **`src/llm_client.py`** - OpenAI client and LLM interaction functions
   - `get_openai_client()`: Initialize OpenAI client
   - `build_question_prompt()`: Creates prompts for conversational assistant
   - `get_response()`: Streams LLM responses
   - `generator_to_string()`: Converts streaming responses to strings
+  - `generate_adaptive_suggestions()`: Context-aware suggestion generation
 
 - **`src/cv_generator.py`** - PDF/LaTeX and Word document generation
-  - `json_to_cv_pdf()`: Generates PDF via LaTeX compilation
+  - `json_to_cv_pdf()`: Generates PDF via LaTeX compilation (outputs to `outputs/` directory)
   - `generate_word_docx()`: Creates Word documents (optional, uses lazy imports)
 
 - **`src/data_utils.py`** - Data processing and PDF parsing
@@ -33,10 +44,26 @@ The codebase has been refactored into a modular structure:
   - `save_json_str_to_dict()`: Parses LLM JSON responses and updates session state
   - `extract_cv_from_pdf()`: Uses PyMuPDF and LLM to parse uploaded CVs
 
+- **`src/session_helpers.py`** - Session state management
+  - `initialize_app_session_state()`: Initialize session state variables
+  - `extract_and_save_json_data()`: Extract and save JSON from conversation
+
+- **`src/ui_helpers.py`** - UI component functions
+  - Display functions for messages, suggestions, and progress bars
+  - Draft preview and CV generation triggers
+
+- **`src/metrics.py`** - Analytics and observability
+  - Event logging and error tracking
+  - Session metrics and CV quality scoring
+
 - **`streamlit_app.py`** - Main application entry point
   - UI layout and interaction flow
   - Chat interface management
   - Session state handling
+
+- **`outputs/`** - Generated files directory
+  - CV.pdf, CV.tex, and intermediate LaTeX files
+  - Automatically created, ignored by git
 
 ### Main Application Flow
 
@@ -106,8 +133,9 @@ The `deep_update()` function in `src/data_utils.py` has complex logic for mergin
 
 The `json_to_cv_pdf()` function requires:
 1. System installation of `pdflatex` and LaTeX packages (geometry, titlesec, fontawesome5, etc.)
-2. Write permissions in working directory for intermediate .tex and .pdf files
-3. The function creates `CV.tex` and `CV.pdf` files in the current directory
+2. Write permissions in the `outputs/` directory for intermediate .tex and .pdf files
+3. The function creates `CV.tex` and `CV.pdf` files in the `outputs/` directory
+4. The `outputs/` directory is automatically created if it doesn't exist
 
 ### Lazy Imports
 

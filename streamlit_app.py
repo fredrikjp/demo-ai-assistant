@@ -31,7 +31,7 @@ from src.llm_client import (
 )
 
 # Import data functions
-from src.cv_generator import json_to_cv_pdf
+from src.cv_generator import json_to_cv_pdf, generate_word_docx
 from src.data_utils import extract_cv_from_pdf
 
 # Import metrics
@@ -127,7 +127,10 @@ st.html(div(style=styles(font_size=rem(5), line_height=1))["❉"])
 
 title_row = st.container(horizontal=True, vertical_alignment="bottom")
 with title_row:
-    st.title("Ungt Steg AI assistent", anchor=False, width="stretch")
+    if st.session_state.get("CV_mode", False):
+        st.title("Ungt Steg CV Generator", anchor=False, width="stretch")
+    else:
+        st.title("Ungt Steg AI assistent", anchor=False, width="stretch")
 
 # Check user interaction state
 user_just_asked_initial_question, user_just_clicked_suggestion, user_first_interaction, has_message_history = check_user_interaction()
@@ -391,9 +394,16 @@ if st.session_state.get("trigger_cv_generation", False):
     if "CV_dict" in st.session_state:
         with st.spinner("Genererer CV..."):
             try:
+                # Generate PDF
                 json_to_cv_pdf(client, st.session_state.CV_dict)
-                with open("CV.pdf", "rb") as f:
+                with open("outputs/CV.pdf", "rb") as f:
                     st.session_state["CV_pdf"] = f.read()
+
+                # Generate Word document
+                docx_buffer = generate_word_docx(client, st.session_state.CV_dict)
+                if docx_buffer:
+                    st.session_state["CV_docx"] = docx_buffer.read()
+
                 st.success("CV generert!")
                 st.session_state.generate_CV_button_clicked = True
                 log_event("cv_generated_success", {
@@ -412,20 +422,39 @@ if st.session_state.get("trigger_cv_generation", False):
 
 
 # -----------------------------------------------------------------------------
-# Show Download Button
+# Show Download Buttons
 # -----------------------------------------------------------------------------
 
 if "CV_pdf" in st.session_state and st.session_state.get("generate_CV_button_clicked", False) and not user_message:
-    download_clicked = st.download_button(
-        type="primary",
-        label="📥 Last ned CV",
-        data=st.session_state["CV_pdf"],
-        file_name="CV.pdf",
-        mime='application/pdf',
-        use_container_width=True
-    )
-    if download_clicked:
-        log_event("cv_downloaded", {
-            "session_duration": get_session_duration(),
-            "message_count": len(st.session_state.get("messages", []))
-        })
+    col1, col2 = st.columns(2)
+
+    with col1:
+        pdf_download_clicked = st.download_button(
+            type="primary",
+            label="📥 Last ned PDF",
+            data=st.session_state["CV_pdf"],
+            file_name="CV.pdf",
+            mime='application/pdf',
+            use_container_width=True
+        )
+        if pdf_download_clicked:
+            log_event("cv_pdf_downloaded", {
+                "session_duration": get_session_duration(),
+                "message_count": len(st.session_state.get("messages", []))
+            })
+
+    with col2:
+        if "CV_docx" in st.session_state:
+            docx_download_clicked = st.download_button(
+                type="primary",
+                label="📥 Last ned Word",
+                data=st.session_state["CV_docx"],
+                file_name="CV.docx",
+                mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                use_container_width=True
+            )
+            if docx_download_clicked:
+                log_event("cv_docx_downloaded", {
+                    "session_duration": get_session_duration(),
+                    "message_count": len(st.session_state.get("messages", []))
+                })
